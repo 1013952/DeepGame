@@ -106,6 +106,38 @@ class AttentionNetwork(NeuralNetwork):
             """
             Define network structure here 
             """
+            # Only simple structure here so far
+            hidden_size = 200 #TODO figure this out
+            num_heads = 10 #TODO configure
+
+            self_input = Input(shape=input_shape)
+            key_trasf = []
+            value_transf = []
+            context = []
+            for i in range(num_heads):
+                query_transf_t = Dense(hidden_size, activation="linear")(self_input)
+                key_transf_t = Dense(hidden_size, activation="linear")(self_input)
+                value_transf_t = Dense(hidden_size, activation="linear")(self_input)
+                attention_t = Dot(axes=[2, 2])([query_transf, key_transf])
+                attention_t = Activation('softmax')(attention)
+                context_t = Dot(axes=[2, 1])([attention, value_transf])
+
+                key_transf.append(key_transf_t)
+                query_transf.append(query_transf_t)
+                value_transf.append(value_transf_t)
+                context.append(context_t)
+
+            context = Concat(context)
+            model = Model(self_input, context)
+            model.add(Dense(256, activation = 'relu'))
+            model.add(Dense(num_classes, activation='softmax'))
+
+            # Arbitrary choice for optimizer
+            #TODO figure this out
+            model.compile(loss='categorical_crossentropy',
+                          optimizer= keras.optimizers.Adadelta(),
+                          metrics=['accuracy'])
+
 
             if not data_augmentation:
                 print("Not using data augmentation.")
@@ -158,9 +190,24 @@ class AttentionNetwork(NeuralNetwork):
             """
             Define network structure here 
             """
+            # Only simple structure here so far
+            hidden_size = 200 #TODO figure this out
+            self_input = Input(shape=input_shape)
+            query_transf = Dense(hidden_size, activation="linear")(self_input)
+            key_transf = Dense(hidden_size, activation="linear")(self_input)
+            value_transf = Dense(hidden_size, activation="linear")(self_input)
+            attention = Dot(axes=[2, 2])([query_transf, key_transf])
+            attention = Activation('softmax')(attention)
+            context = Dot(axes=[2, 1])([attention, value_transf])
 
+            model = Model(self_input, context)
+            model.add(Dense(256, activation = 'relu'))
+            model.add(Dense(num_classes, activation='softmax'))
+
+            # Arbitrary choice for optimizer
+            #TODO figure this out
             model.compile(loss='categorical_crossentropy',
-                          optimizer=opt,
+                          optimizer= keras.optimizers.Adadelta(),
                           metrics=['accuracy'])
 
             if not data_augmentation:
