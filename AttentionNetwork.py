@@ -10,8 +10,8 @@ import cv2
 import copy
 import keras
 from keras.datasets import mnist, cifar10
-from keras.models import Sequential, load_model
-from keras.layers import Input, Dense, Dot
+from keras.models import Sequential, load_model, Model
+from keras.layers import Dense, Dropout, Flatten, Conv2D, MaxPooling2D, Input, Multiply, Dot, Activation
 from keras.preprocessing.image import ImageDataGenerator
 from keras.preprocessing import image as Image
 from keras import backend as K
@@ -50,18 +50,20 @@ class AttentionNetwork(NeuralNetwork):
             Define network structure here 
             """
             # Only simple structure here so far
-            hidden_size = 200 #TODO figure this out
-            self_input = Input(shape=input_shape)
-            query_transf = Dense(hidden_size, activation="linear")(self_input)
-            key_transf = Dense(hidden_size, activation="linear")(self_input)
-            value_transf = Dense(hidden_size, activation="linear")(self_input)
-            attention = Dot(axes=[2, 2])([query_transf, key_transf])
-            attention = Activation('softmax')(attention)
-            context = Dot(axes=[2, 1])([attention, value_transf])
+            self_input = Input(shape = input_shape)
+            flattened = Flatten()(self_input)
+            hidden_size = 100
+            query_transf = Dense(hidden_size, activation='linear')(flattened)
+            key_transf = Dense(hidden_size, activation = 'linear')(flattened)
+            value_transf = Dense(hidden_size, activation = 'linear')(flattened)
+            attention = Dot(axes=[1, 1])([query_transf, key_transf])
+            att_act = Activation('softmax')(attention)
+            context = Multiply()([att_act, value_transf])
+            dense_n = Dense(100, activation='relu')(context)
+            dropout = Dropout(0.5)(dense_n)
+            dense_n2 = Dense(num_classes, activation='softmax')(dropout)
 
-            model = Model(self_input, context)
-            model.add(Dense(256, activation = 'relu'))
-            model.add(Dense(num_classes, activation='softmax'))
+            model = Model(self_input, dense_n2)
 
             # Arbitrary choice for optimizer
             #TODO figure this out
