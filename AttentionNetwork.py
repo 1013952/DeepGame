@@ -24,9 +24,9 @@ from DataSet import *
 # Define a Attention Network class.
 class AttentionNetwork(NeuralNetwork):
     # To train a neural network.
-    def train_network(self):
-        # Train an mnist model.
-        if self.data_set == 'mnist':
+    def train_network(self, n_type="baby"):
+        # Load the correct dataset
+        if self.data_SET == 'mnist':
             batch_size = 128
             num_classes = 10
             epochs = 50
@@ -46,44 +46,6 @@ class AttentionNetwork(NeuralNetwork):
             y_train = keras.utils.np_utils.to_categorical(y_train, num_classes)
             y_test = keras.utils.np_utils.to_categorical(y_test, num_classes)
 
-            """
-            Define network structure here 
-            """
-            # Only simple structure here so far
-            self_input = Input(shape = input_shape)
-            flattened = Flatten()(self_input)
-            hidden_size = 100
-            query_transf = Dense(hidden_size, activation='linear')(flattened)
-            key_transf = Dense(hidden_size, activation = 'linear')(flattened)
-            value_transf = Dense(hidden_size, activation = 'linear')(flattened)
-            attention = Dot(axes=[1, 1])([query_transf, key_transf])
-            att_act = Activation('softmax')(attention)
-            context = Multiply()([att_act, value_transf])
-            dense_n = Dense(100, activation='relu')(context)
-            dropout = Dropout(0.5)(dense_n)
-            dense_n2 = Dense(num_classes, activation='softmax')(dropout)
-
-            model = Model(self_input, dense_n2)
-
-            # Arbitrary choice for optimizer
-            #TODO figure this out
-            model.compile(loss='categorical_crossentropy',
-                          optimizer= keras.optimizers.Adadelta(),
-                          metrics=['accuracy'])
-
-            model.fit(x_train, y_train,
-                      batch_size=batch_size,
-                      epochs=epochs,
-                      verbose=1,
-                      validation_data=(x_test, y_test))
-
-            score = model.evaluate(x_test, y_test, verbose=0)
-            print("Test loss:", score[0])
-            print("Test accuracy:", score[1])
-
-            self.model = model
-
-        # Train a cifar10 model.
         elif self.data_set == 'cifar10':
             batch_size = 128
             num_classes = 10
@@ -105,77 +67,6 @@ class AttentionNetwork(NeuralNetwork):
             y_train = keras.utils.np_utils.to_categorical(y_train, num_classes)
             y_test = keras.utils.np_utils.to_categorical(y_test, num_classes)
 
-            """
-            Define network structure here 
-            """
-            # Only simple structure here so far
-            hidden_size = 200 #TODO figure this out
-            num_heads = 10 #TODO configure
-
-            self_input = Input(shape=input_shape)
-            key_trasf = []
-            value_transf = []
-            context = []
-            for i in range(num_heads):
-                query_transf_t = Dense(hidden_size, activation="linear")(self_input)
-                key_transf_t = Dense(hidden_size, activation="linear")(self_input)
-                value_transf_t = Dense(hidden_size, activation="linear")(self_input)
-                attention_t = Dot(axes=[2, 2])([query_transf, key_transf])
-                attention_t = Activation('softmax')(attention)
-                context_t = Dot(axes=[2, 1])([attention, value_transf])
-
-                key_transf.append(key_transf_t)
-                query_transf.append(query_transf_t)
-                value_transf.append(value_transf_t)
-                context.append(context_t)
-
-            context = Concat(context)
-            model = Model(self_input, context)
-            model.add(Dense(256, activation = 'relu'))
-            model.add(Dense(num_classes, activation='softmax'))
-
-            # Arbitrary choice for optimizer
-            #TODO figure this out
-            model.compile(loss='categorical_crossentropy',
-                          optimizer= keras.optimizers.Adadelta(),
-                          metrics=['accuracy'])
-
-
-            if not data_augmentation:
-                print("Not using data augmentation.")
-                model.fit(x_train, y_train,
-                          batch_size=batch_size,
-                          epochs=epochs,
-                          validation_data=(x_test, y_test),
-                          shuffle=True)
-            else:
-                print("Using real-time data augmentation.")
-                datagen = ImageDataGenerator(
-                    featurewise_center=False,
-                    samplewise_center=False,
-                    featurewise_std_normalization=False,
-                    samplewise_std_normalization=False,
-                    zca_whitening=False,
-                    rotation_range=0,
-                    width_shift_range=0.1,
-                    height_shift_range=0.1,
-                    horizontal_flip=True,
-                    vertical_flip=False)
-
-                datagen.fit(x_train)
-                model.fit_generator(datagen.flow(x_train, y_train,
-                                                 batch_size=batch_size),
-                                    epochs=epochs,
-                                    validation_data=(x_test, y_test),
-                                    workers=4)
-
-            scores = model.evaluate(x_test, y_test, verbose=0)
-            print("Test loss:", scores[0])
-            print("Test accuracy:", scores[1])
-
-            self.model = model
-
-            # Train a gtsrb model.
         elif self.data_set == 'gtsrb':
             batch_size = 128
             num_classes = 43
@@ -188,31 +79,22 @@ class AttentionNetwork(NeuralNetwork):
             test = DataSet('gtsrb', 'test')
             x_test, y_test = test.x, test.y
             input_shape = (img_rows, img_cols, img_chls)
+        else:
+            print("Unsupported dataset %s. Try 'mnist' or 'cifar10' or 'gtsrb'." % self.data_set)
 
-            """
-            Define network structure here 
-            """
-            # Only simple structure here so far
-            hidden_size = 200 #TODO figure this out
-            self_input = Input(shape=input_shape)
-            query_transf = Dense(hidden_size, activation="linear")(self_input)
-            key_transf = Dense(hidden_size, activation="linear")(self_input)
-            value_transf = Dense(hidden_size, activation="linear")(self_input)
-            attention = Dot(axes=[2, 2])([query_transf, key_transf])
-            attention = Activation('softmax')(attention)
-            context = Dot(axes=[2, 1])([attention, value_transf])
 
-            model = Model(self_input, context)
-            model.add(Dense(256, activation = 'relu'))
-            model.add(Dense(num_classes, activation='softmax'))
 
-            # Arbitrary choice for optimizer
-            #TODO figure this out
-            model.compile(loss='categorical_crossentropy',
-                          optimizer= keras.optimizers.Adadelta(),
-                          metrics=['accuracy'])
+        # Choose correct network structure
+        if n_type == 'multihead':
+            print("Multihead model not yet implemented.")
+        elif n_type == 'transformer':
+            print("Transformer model not yet implemented.")
+        else:
+            print("Using baby attention model.")
+            self.model, self.model_partition = self.babymodel(input_shape)
 
-            if not data_augmentation:
+        # Train and score model
+        if not data_augmentation:
                 print("Not using data augmentation.")
                 model.fit(x_train, y_train,
                           batch_size=batch_size,
@@ -240,15 +122,85 @@ class AttentionNetwork(NeuralNetwork):
                                     validation_data=(x_test, y_test),
                                     workers=4)
 
-            scores = model.evaluate(x_test, y_test, verbose=0)
-            print("Test loss:", scores[0])
-            print("Test accuracy:", scores[1])
+        score = model.evaluate(x_test, y_test, verbose=0)
+        print("Test loss:", score[0])
+        print("Test accuracy:", score[1])
 
-            self.model = model
-
-        else:
-            print("Unsupported dataset %s. Try 'mnist' or 'cifar10' or 'gtsrb'." % self.data_set)
+        self.model = model
         self.save_network()
+
+
+    # Generate network model for baby attention network
+    def babymodel(self, input_shape):
+        # Only simple structure here so far
+        self_input = Input(shape = input_shape)
+        flattened = Flatten()(self_input)
+        hidden_size = 100
+        query_transf = Dense(hidden_size, activation='linear')(flattened)
+        key_transf = Dense(hidden_size, activation = 'linear')(flattened)
+        value_transf = Dense(hidden_size, activation = 'linear')(flattened)
+        attention = Dot(axes=[1, 1])([query_transf, key_transf])
+        att_act = Activation('softmax', name="att_map")(attention)
+        context = Multiply()([att_act, value_transf])
+        dense_n = Dense(100, activation='relu')(context)
+        dropout = Dropout(0.5)(dense_n)
+        dense_n2 = Dense(num_classes, activation='softmax')(dropout)
+
+        model = Model(self_input, dense_n2)
+
+        # Arbitrary choice for optimizer
+        #TODO figure this out
+        model.compile(loss='categorical_crossentropy',
+                      optimizer= keras.optimizers.Adadelta(),
+                        metrics=['accuracy'])
+
+        model_partition = Model(self_input, model.get_layer("att_map").output)
+        model_partition.compile(loss='categorical_crossentropy',
+                      optimizer= keras.optimizers.Adadelta(),
+                        metrics=['accuracy'])
+
+        return model, model_partition
+
+    # Generate network model for multihead attention network
+    def multihead(self, input_shape):
+        self_input = Input(shape = input_shape)
+        flattened = Flatten()(self_input)
+        hidden_size = 50
+        n_heads = 5
+        context = []
+        att_act_arr = []
+        for i in range(n_heads):
+            query_transf = Dense(hidden_size, activation='linear')(flattened)
+            key_transf = Dense(hidden_size, activation = 'linear')(flattened)
+            value_transf = Dense(hidden_size, activation = 'linear')(flattened)
+            attention = Dot(axes=[1, 1])([query_transf, key_transf])
+            att_act = Activation('softmax')(attention)
+            context.append(Multiply()([att_act, value_transf]))
+            att_act_arr.append(att_act)
+
+        context_n = Concatenate()(context)
+        att_act_n = Concatenate()()(att_act_arr)
+        att_act_n = Reshape((-1, n_heads), name="att_map")
+
+        dense_n = Dense(100, activation='relu')(context_n)
+        dropout = Dropout(0.5)(dense_n)
+        dense_n2 = Dense(num_classes, activation='softmax')(dropout)
+
+        model = Model(self_input, dense_n2)
+
+        # Arbitrary choice for optimizer
+        #TODO figure this out
+        model.compile(loss='categorical_crossentropy',
+                          optimizer= keras.optimizers.Adadelta(),
+                          metrics=['accuracy'])
+
+        model_partition = Model(self_input, model.get_layer("att_map").output)
+        model_partition.compile(loss='categorical_crossentropy',
+                      optimizer= keras.optimizers.Adadelta(),
+                        metrics=['accuracy'])
+
+        return model, model_partition
+
 
     # To save the neural network to disk.
     def save_network(self):
@@ -266,3 +218,6 @@ class AttentionNetwork(NeuralNetwork):
             print("Neural network loaded from disk.")
         else:
             print("load_network: Unsupported dataset.")
+
+    def get_partition_model(self):
+        return self.model_partition
