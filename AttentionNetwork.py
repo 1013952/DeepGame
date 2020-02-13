@@ -91,7 +91,7 @@ class AttentionNetwork(NeuralNetwork):
             print("Transformer model not yet implemented.")
         else:
             print("Using baby attention model.")
-            self.model, self.model_partition = self.babymodel(input_shape)
+            model, mask_model = self.babymodel(input_shape)
 
         # Train and score model
         if not data_augmentation:
@@ -127,66 +127,25 @@ class AttentionNetwork(NeuralNetwork):
         print("Test accuracy:", score[1])
 
         self.model = model
+        self.mask_model = mask_model
         self.save_network()
 
 
     # Generate network model for baby attention network
     def babymodel(self, input_shape):
-        # Only simple structure here so far
         self_input = Input(shape = input_shape)
-        flattened = Flatten()(self_input)
-        hidden_size = 100
-        query_transf = Dense(hidden_size, activation='linear')(flattened)
-        key_transf = Dense(hidden_size, activation = 'linear')(flattened)
-        value_transf = Dense(hidden_size, activation = 'linear')(flattened)
-        attention = Dot(axes=[1, 1])([query_transf, key_transf])
-        att_act = Activation('softmax', name="att_map")(attention)
-        context = Multiply()([att_act, value_transf])
-        dense_n = Dense(100, activation='relu')(context)
-        dropout = Dropout(0.5)(dense_n)
-        dense_n2 = Dense(num_classes, activation='softmax')(dropout)
+        output = Conv2D(32, (3, 3), activation='relu')(self_input)
 
-        model = Model(self_input, dense_n2)
+        output_soft_mask = Conv2D(32, (1, 1))(self_input)
+        output_soft_mask = Conv2D(32, (3, 3))(output_soft_mask)
+        output_soft_mask = Activation('sigmoid')(output_soft_mask)
 
-        # Arbitrary choice for optimizer
-        #TODO figure this out
-        model.compile(loss='categorical_crossentropy',
-                      optimizer= keras.optimizers.Adadelta(),
-                        metrics=['accuracy'])
+        output_soft_mask = Multiply()([output, output_soft_mask])
 
-        model_partition = Model(self_input, model.get_layer("att_map").output)
-        model_partition.compile(loss='categorical_crossentropy',
-                      optimizer= keras.optimizers.Adadelta(),
-                        metrics=['accuracy'])
+        output = Flatten()(output_soft_mask)
+        output = Dense(num_classes, activation='softmax')(output)
 
-        return model, model_partition
-
-    # Generate network model for multihead attention network
-    def multihead(self, input_shape):
-        self_input = Input(shape = input_shape)
-        flattened = Flatten()(self_input)
-        hidden_size = 50
-        n_heads = 5
-        context = []
-        att_act_arr = []
-        for i in range(n_heads):
-            query_transf = Dense(hidden_size, activation='linear')(flattened)
-            key_transf = Dense(hidden_size, activation = 'linear')(flattened)
-            value_transf = Dense(hidden_size, activation = 'linear')(flattened)
-            attention = Dot(axes=[1, 1])([query_transf, key_transf])
-            att_act = Activation('softmax')(attention)
-            context.append(Multiply()([att_act, value_transf]))
-            att_act_arr.append(att_act)
-
-        context_n = Concatenate()(context)
-        att_act_n = Concatenate()()(att_act_arr)
-        att_act_n = Reshape((-1, n_heads), name="att_map")
-
-        dense_n = Dense(100, activation='relu')(context_n)
-        dropout = Dropout(0.5)(dense_n)
-        dense_n2 = Dense(num_classes, activation='softmax')(dropout)
-
-        model = Model(self_input, dense_n2)
+        model = Model(self_input, output)
 
         # Arbitrary choice for optimizer
         #TODO figure this out
@@ -194,12 +153,12 @@ class AttentionNetwork(NeuralNetwork):
                           optimizer= keras.optimizers.Adadelta(),
                           metrics=['accuracy'])
 
-        model_partition = Model(self_input, model.get_layer("att_map").output)
-        model_partition.compile(loss='categorical_crossentropy',
-                      optimizer= keras.optimizers.Adadelta(),
-                        metrics=['accuracy'])
+        mask_model = Model(self_input, output_soft_mask)
+        mask_model.compile(loss='categorical_crossentropy',
+                          optimizer= keras.optimizers.Adadelta(),
+                          metrics=['accuracy'])
 
-        return model, model_partition
+        return model, mask_model
 
 
     # To save the neural network to disk.
@@ -220,4 +179,4 @@ class AttentionNetwork(NeuralNetwork):
             print("load_network: Unsupported dataset.")
 
     def get_partition_model(self):
-        return self.model_partition
+        return self.mask_model
