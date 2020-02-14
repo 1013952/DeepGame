@@ -23,6 +23,12 @@ from DataSet import *
 
 # Define a Attention Network class.
 class AttentionNetwork(NeuralNetwork):
+    def __init__(self, n_heads, data_set):
+        self.data_set = data_set
+        self.model = Model()
+        assure_path_exists("%s_pic/" %self.data_set)
+        self.n_heads = n_heads
+
     # To train a neural network.
     def train_network(self, n_type="baby"):
         # Load the correct dataset
@@ -31,6 +37,7 @@ class AttentionNetwork(NeuralNetwork):
             num_classes = 10
             epochs = 50
             img_rows, img_cols = 28, 28
+            data_augmentation = False
 
             (x_train, y_train), (x_test, y_test) = mnist.load_data()
 
@@ -134,15 +141,23 @@ class AttentionNetwork(NeuralNetwork):
     # Generate network model for baby attention network
     def babymodel(self, input_shape):
         self_input = Input(shape = input_shape)
-        output = Conv2D(32, (3, 3), activation='relu')(self_input)
+        output = Conv2D(self.n_heads, (3, 3), activation='relu')(self_input)
+        output = Conv2D(self.n_heads, (3, 3), activation='relu')(output)
 
-        output_soft_mask = Conv2D(32, (1, 1))(self_input)
-        output_soft_mask = Conv2D(32, (3, 3))(output_soft_mask)
-        output_soft_mask = Activation('sigmoid')(output_soft_mask)
+        output_soft_mask = Conv2D(self.n_heads, (3, 3))(self_input)
+        output_soft_mask = Conv2D(self.n_heads, (3, 3))(output_soft_mask)
+        output_soft_mask = Permute((3, 1, 2))(output_soft_mask)
+        output_soft_mask = Reshape((self.n_heads, 28*28))(output_soft_mask)
+        output_soft_mask = Activation('softmax')(output_soft_mask)
+        output_soft_mask = Reshape((self.n_heads, 28, 28))(output_soft_mask)
+        output_soft_mask = Permute((2, 3, 1))(output_soft_mask)
 
-        output_soft_mask = Multiply()([output, output_soft_mask])
 
-        output = Flatten()(output_soft_mask)
+        output = Multiply()([output, output_soft_mask])
+
+        output = Flatten()(output)
+
+        output = Dense(256, activation='relu')(output)
         output = Dense(num_classes, activation='softmax')(output)
 
         model = Model(self_input, output)
@@ -157,7 +172,6 @@ class AttentionNetwork(NeuralNetwork):
         mask_model.compile(loss='categorical_crossentropy',
                           optimizer= keras.optimizers.Adadelta(),
                           metrics=['accuracy'])
-
         return model, mask_model
 
 

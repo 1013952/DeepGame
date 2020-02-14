@@ -58,7 +58,7 @@ class FeatureExtraction:
                 key_points, _ = sift.detectAndCompute(image, None)
 
         # Grey-box pattern: get key points from partition ID.
-        elif self.PATTERN == 'grey-box':
+        elif self.PATTERN == 'grey-box' or self.PATTERN == 'attention':
             key_points = [key for key in range(self.NUM_PARTITION)]
 
         else:
@@ -72,9 +72,13 @@ class FeatureExtraction:
         self.NUM_PARTITION = num_partition
         self.PIXEL_BOUNDS = pixel_bounds
 
-        # Grey-box pattern: must specify a neural network.
-        if self.PATTERN == 'grey-box' and model is None:
-            print("For 'grey-box' feature extraction, please specify a neural network.")
+        # Grey-box/attention pattern: must specify a neural network.
+        if (self.PATTERN == 'grey-box' or self.PATTERN == 'attention') and model is None:
+            print("For '%s' feature extraction, please specify a neural network." % self.PATTERN)
+            exit
+        # Model must be of correct subclass
+        if self.PATTERN == 'attention' and not isinstance(model, AttentionNetwork):
+            print("For attention feature extraction, model must be an attention network.")
             exit
 
         # Grey-box pattern: get partitions from saliency map.
@@ -91,6 +95,38 @@ class FeatureExtraction:
                 if key == self.NUM_PARTITION - 1:
                     partitions[key].extend((int(saliency_map[idx, 0]), int(saliency_map[idx, 1])) for idx in
                                            range((key + 1) * quotient, len(saliency_map)))
+            return partitions
+
+        # Attention pattern: get partitions from attention activations
+        elif self.PATTERN == 'attention':
+            print("Extracting image features using '%s' pattern." % self.PATTERN)
+
+            map_model = model.get_partition_model()
+
+            #TODO if num_partitions > n_heads
+            if self.NUM_PARTITION <= model.n_heads:
+                max_index = -1
+                max_score = -1
+                # Find best subset of the features to use as partition
+                for index, subset in enumerate(rSubset (range(model.n_heads), self.NUM_PARTITION)):
+                    mask = [a in subset for a in range(model.n_heads)]
+                    score = np.sum(np.mask(to_show[0].T[mask], axis=0).T)
+                    if score > max_score:
+                        max_index = index
+                        max_score = score
+
+                # Extract best-scoring mask and assign maximum-activation map
+                mask = [a in rSubset(range(16), 5)[max_index] for a in range(16)]
+                imgmap = np.argmax(to_show[0].T[mask], axis=0).T
+
+                partitions = {}
+                for key, i in enumerate(rSubset(range(16), 5)[max_index]):
+                    partitions[key] = [tuple(loc) for loc in np.argwhere(imgmap == i)]
+
+            else:
+                print("Too few heads. Further splitting not implemented.")
+                exit 
+                
             return partitions
 
         # Black-box pattern: get partitions from key points.
