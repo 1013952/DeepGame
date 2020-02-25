@@ -127,7 +127,7 @@ class AttentionNetwork(NeuralNetwork):
                                                  batch_size=batch_size),
                                     epochs=epochs,
                                     validation_data=(x_test, y_test),
-                                    workers=4)
+                                    workers=4, steps_per_epoch = 400)
 
         score = model.evaluate(x_test, y_test, verbose=0)
         print("Test loss:", score[0])
