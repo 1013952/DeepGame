@@ -11,7 +11,7 @@ import copy
 import keras
 from keras.datasets import mnist, cifar10
 from keras.models import Sequential, load_model, Model
-from keras.layers import Dense, Dropout, Flatten, Conv2D, MaxPooling2D, Input, Multiply, Dot, Activation
+from keras.layers import Dense, Reshape, Permute,  Dropout, Flatten, Conv2D, MaxPooling2D, Input, Multiply, Dot, Activation
 from keras.preprocessing.image import ImageDataGenerator
 from keras.preprocessing import image as Image
 from keras import backend as K
@@ -19,11 +19,11 @@ from matplotlib import pyplot as plt
 
 from basics import assure_path_exists
 from DataSet import *
-
+from NeuralNetwork import *
 
 # Define a Attention Network class.
 class AttentionNetwork(NeuralNetwork):
-    def __init__(self, n_heads, data_set):
+    def __init__(self, n_heads=16, data_set='cifar10'):
         self.data_set = data_set
         self.model = Model()
         assure_path_exists("%s_pic/" %self.data_set)
@@ -31,8 +31,9 @@ class AttentionNetwork(NeuralNetwork):
 
     # To train a neural network.
     def train_network(self, n_type="baby"):
-        # Load the correct dataset
-        if self.data_SET == 'mnist':
+	num_classes = 0       
+	 # Load the correct dataset
+        if self.data_set == 'mnist':
             batch_size = 128
             num_classes = 10
             epochs = 50
@@ -108,7 +109,7 @@ class AttentionNetwork(NeuralNetwork):
                           epochs=epochs,
                           validation_data=(x_test, y_test),
                           shuffle=True)
-            else:
+        else:
                 print("Using real-time data augmentation.")
                 datagen = ImageDataGenerator(
                     featurewise_center=False,
