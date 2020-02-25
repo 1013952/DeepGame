@@ -35,7 +35,7 @@ class AttentionNetwork(NeuralNetwork):
 	 # Load the correct dataset
         if self.data_set == 'mnist':
             batch_size = 128
-            num_classes = 10
+            self.num_classes = 10
             epochs = 50
             img_rows, img_cols = 28, 28
             data_augmentation = False
@@ -56,7 +56,7 @@ class AttentionNetwork(NeuralNetwork):
 
         elif self.data_set == 'cifar10':
             batch_size = 128
-            num_classes = 10
+            self.num_classes = 10
             epochs = 50
             img_rows, img_cols, img_chls = 32, 32, 3
             data_augmentation = True
@@ -77,7 +77,7 @@ class AttentionNetwork(NeuralNetwork):
 
         elif self.data_set == 'gtsrb':
             batch_size = 128
-            num_classes = 43
+            self.num_classes = 43
             epochs = 50
             img_rows, img_cols, img_chls = 48, 48, 3
             data_augmentation = True
@@ -159,7 +159,7 @@ class AttentionNetwork(NeuralNetwork):
         output = Flatten()(output)
 
         output = Dense(256, activation='relu')(output)
-        output = Dense(num_classes, activation='softmax')(output)
+        output = Dense(self.num_classes, activation='softmax')(output)
 
         model = Model(self_input, output)
 
