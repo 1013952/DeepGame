@@ -13,7 +13,8 @@ import cv2
 import random
 from scipy.stats import norm
 from keras import backend as K
-
+from AttentionNetwork import AttentionNetwork
+from itertools import combinations
 
 # Define a Feature Extraction class.
 class FeatureExtraction:
@@ -29,6 +30,17 @@ class FeatureExtraction:
         self.NUM_PARTITION = 10
         self.PIXEL_BOUNDS = (0, 1)
         self.NUM_OF_PIXEL_MANIPULATION = 2
+
+
+    # helper function for attention extraction
+    def rSubset(self, arr, r): 
+      
+        # return list of all subsets of length r 
+        # to deal with duplicate subsets use  
+        # set(list(combinations(arr, r))) 
+        return list(combinations(arr, r)) 
+
+
 
     # Get key points of an image.
     def get_key_points(self, image, num_partition=10):
@@ -68,7 +80,8 @@ class FeatureExtraction:
         return key_points
 
     # Get partitions of an image.
-    def get_partitions(self, image, model=None, num_partition=10, pixel_bounds=(0, 1)):
+    #TODO revert default to 10 partitions
+    def get_partitions(self, image, model=None, num_partition=5, pixel_bounds=(0, 1)):
         self.NUM_PARTITION = num_partition
         self.PIXEL_BOUNDS = pixel_bounds
 
@@ -103,24 +116,30 @@ class FeatureExtraction:
 
             map_model = model.get_partition_model()
 
+            attn = map_model.predict(np.array([image]))[0]
+            img_height, img_width, image_ch = image.shape
+            attn = cv2.resize(attn, (img_height, img_width))
+
+            # attn = attn/np.mean(attn, axis=0)
+
             #TODO if num_partitions > n_heads
             if self.NUM_PARTITION <= model.n_heads:
                 max_index = -1
-                max_score = -1
+                max_mask = []
+                max_score = 0
                 # Find best subset of the features to use as partition
-                for index, subset in enumerate(rSubset (range(model.n_heads), self.NUM_PARTITION)):
+                for subset in self.rSubset (range(model.n_heads), self.NUM_PARTITION):
                     mask = [a in subset for a in range(model.n_heads)]
-                    score = np.sum(np.mask(to_show[0].T[mask], axis=0).T)
+                    score = np.sum(np.max(attn.T[mask], axis=0).T)
                     if score > max_score:
-                        max_index = index
                         max_score = score
+                        max_mask = mask
 
                 # Extract best-scoring mask and assign maximum-activation map
-                mask = [a in rSubset(range(16), 5)[max_index] for a in range(16)]
-                imgmap = np.argmax(to_show[0].T[mask], axis=0).T
-
+                imgmap = np.argmax(attn.T[max_mask], axis=0)
                 partitions = {}
-                for key, i in enumerate(rSubset(range(16), 5)[max_index]):
+                for i, key in enumerate(np.arange(model.n_heads)[max_mask]):
+                    print(np.argwhere(imgmap == i))
                     partitions[key] = [tuple(loc) for loc in np.argwhere(imgmap == i)]
 
             else:
