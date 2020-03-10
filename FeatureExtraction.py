@@ -15,10 +15,11 @@ from scipy.stats import norm
 from keras import backend as K
 from AttentionNetwork import AttentionNetwork
 from itertools import combinations
+from matplotlib import pyplot as plt
 
 # Define a Feature Extraction class.
 class FeatureExtraction:
-    def __init__(self, pattern='black-box'):
+    def __init__(self, pattern='grey-box'):
         self.PATTERN = pattern
 
         # black-box parameters
@@ -196,7 +197,7 @@ class FeatureExtraction:
                 return partitions
 
         else:
-            print("Unrecognised feature extraction pattern. "
+            print("Unrecognised feature extraction pattern."
                   "Try 'black-box' or 'grey-box'.")
 
     # Get saliency map of an image.
@@ -242,3 +243,12 @@ class FeatureExtraction:
         saliency_map = target_feature_list[target_feature_list[:, 2].argsort()]
 
         return saliency_map
+
+    def plot_saliency_map(self, image, partitions, path):
+        heatmap = np.zeros(image.shape[0:2])
+        for partitionID in partitions.keys():
+            pixels = partitions[partitionID]
+            for pixel in pixels:
+                heatmap[pixel] = partitionID + 1
+        plt.imsave(path, heatmap)
+
