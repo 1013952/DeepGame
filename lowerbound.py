@@ -10,14 +10,18 @@ Author: Min Wu
 Email: min.wu@cs.ox.ac.uk
 """
 
-from CooperativeAStar import *
+from CooperativeAStarNew import *
 from CompetitiveAlphaBeta import *
 from NeuralNetwork import *
 from DataSet import *
 
 
-def lowerbound(dataset_name, image_index, game_type, eta, tau):
-    NN = NeuralNetwork(dataset_name)
+def lowerbound(dataset_name, image_index, game_type, eta, tau, attention=False):
+    NN = None
+    if attention:
+        NN = AttentionNetwork(data_set = dataset_name)
+    else:
+        NN = NeuralNetwork(dataset_name)
     NN.load_network()
     print("Dataset is %s." % NN.data_set)
     NN.model.summary()
@@ -36,7 +40,7 @@ def lowerbound(dataset_name, image_index, game_type, eta, tau):
 
     if game_type == 'cooperative':
         tic = time.time()
-        cooperative = CooperativeAStar(dataset_name, image_index, image, NN, eta, tau)
+        cooperative = CooperativeAStar(dataset_name, image_index, image, NN, eta, tau, attention=attention)
         cooperative.play_game(image)
         if cooperative.ADVERSARY_FOUND is True:
             elapsed = time.time() - tic
@@ -75,7 +79,7 @@ def lowerbound(dataset_name, image_index, game_type, eta, tau):
             print("Adversarial distance exceeds distance budget.")
 
     elif game_type == 'competitive':
-        competitive = CompetitiveAlphaBeta(image, NN, eta, tau)
+        competitive = CompetitiveAlphaBeta(image, NN, eta, tau, attention=attention)
         competitive.play_game(image)
 
     else:

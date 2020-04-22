@@ -99,7 +99,8 @@ class DataSet:
                     y = keras.utils.np_utils.to_categorical(y_test, num_classes)
 
                 except (IOError, OSError, KeyError):
-                    test = pd.read_csv(directory + 'GT-final_test.csv', sep=';')
+                    test = pd.read_csv(directory + 'GTSRB-Final-Test.csv', sep=';')
+                    print(test.head(5))
                     x_test = []
                     y_test = []
                     for file_name, class_id in zip(list(test['Filename']), list(test['ClassId'])):

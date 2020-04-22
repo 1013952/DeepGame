@@ -6,28 +6,33 @@ import os
 from NeuralNetwork import *
 from DataSet import *
 from DataCollection import *
-from upperbound import upperbound
-from lowerbound import lowerbound
+from upperboundNew import upperbound
+from lowerboundNew import lowerbound
+from basicsNew import *
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"  # Or 2, 3, etc. other than 0
+
+# Raise error if number of parameters does not match
+assert len(sys.argv) in [1, 9]
 
 # the first way of defining parameters
-if len(sys.argv) == 8:
+if len(sys.argv) == 9:
 
     if sys.argv[1] == 'mnist' or sys.argv[1] == 'cifar10' or sys.argv[1] == 'gtsrb':
-        dataSetName = sys.argv[1]
+        data_set_name = sys.argv[1]
     else:
         print("please specify as the 1st argument the dataset: mnist or cifar10 or gtsrb")
         exit
 
     if sys.argv[2] == 'ub' or sys.argv[2] == 'lb':
-        bound = sys.argv[2]
+        bound_type = sys.argv[2]
     else:
         print("please specify as the 2nd argument the bound: ub or lb")
         exit
 
     if sys.argv[3] == 'cooperative' or sys.argv[3] == 'competitive':
-        gameType = sys.argv[3]
+        game_type = sys.argv[3]
     else:
         print("please specify as the 3nd argument the game mode: cooperative or competitive")
         exit
@@ -38,23 +43,35 @@ if len(sys.argv) == 8:
         print("please specify as the 4th argument the index of the image: [int]")
         exit
 
-    if sys.argv[5] == 'L0' or sys.argv[5] == 'L1' or sys.argv[5] == 'L2':
-        distanceMeasure = sys.argv[5]
+    if sys.argv[5] == 'L0':
+        distMeasure = l0Distance() 
+    elif sys.argv[5] == 'L1':
+        distMeasure = l1Distance()
+    elif sys.argv[5] == 'L2':
+        distMeasure = l2Distance()
     else:
         print("please specify as the 5th argument the distance measure: L0, L1, or L2")
         exit
 
     if isinstance(float(sys.argv[6]), float):
-        distance = float(sys.argv[6])
+        dist_cap = float(sys.argv[6])
     else:
         print("please specify as the 6th argument the distance: [int/float]")
         exit
-    eta = (distanceMeasure, distance)
-
+    eta = (distMeasure, dist_cap)
+ 
     if isinstance(float(sys.argv[7]), float):
         tau = float(sys.argv[7])
     else:
         print("please specify as the 7th argument the tau: [int/float]")
+        exit
+
+    if sys.argv[8] == 'y':
+        attention = True
+    elif sys.argv[8] == 'n':
+        attention = False
+    else:
+        print("please specify as the 8th argument whether to use attention: [y/n]")
         exit
 
 elif len(sys.argv) == 1:
@@ -65,25 +82,22 @@ elif len(sys.argv) == 1:
     image_index = 213
     eta = ('L2', 10)
     tau = 1
-
-# calling algorithms
-# dc = DataCollection("%s_%s_%s_%s_%s_%s_%s" % (dataSetName, bound, tau, gameType, image_index, eta[0], eta[1]))
-# dc.initialiseIndex(image_index)
+    attention = 0
 
 if bound == 'ub':
-    (elapsedTime, newConfident, percent, l2dist, l1dist, l0dist, maxFeatures) = upperbound(dataSetName, bound, tau,
-                                                                                           gameType, image_index, eta)
+    ub_instance = upperbound(data_set = dataSetName,
+                                bound = bound,
+                                tau = tau,
+                                game_type = gameType,
+                                eta = eta,
+                                attention = attention,
+                                model = None,
+                                verbose = 1)
 
-    # dc.addRunningTime(elapsedTime)
-    # dc.addConfidence(newConfident)
-    # dc.addManipulationPercentage(percent)
-    # dc.addl2Distance(l2dist)
-    # dc.addl1Distance(l1dist)
-    # dc.addl0Distance(l0dist)
-    # dc.addMaxFeatures(maxFeatures)
+    elapsedTime, newConfident, percent, l2dist, l1dist, l0dist, maxFeatures = ub_instance.search(image_index = image_index)
 
 elif bound == 'lb':
-    lowerbound(dataSetName, image_index, gameType, eta, tau)
+    lowerbound(dataSetName, image_index, gameType, eta, tau, attention)
 
 else:
     print("Unrecognised bound setting.\n"

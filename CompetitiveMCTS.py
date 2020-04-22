@@ -16,7 +16,7 @@ import random
 import math
 
 from basics import *
-from GameMoves import *
+from GameMovesNew import *
 
 MCTS_multi_samples = 1
 effectiveConfidenceWhenChanging = 0.0
@@ -25,17 +25,23 @@ explorationRate = math.sqrt(2)
 
 class MCTSCompetitive:
 
-    def __init__(self, data_set, model, image_index, image, tau, eta):
+    def __init__(self, data_set, model, image_index, image, tau, eta, attention=False):
         self.data_set = data_set
         self.image_index = image_index
         self.image = image
         self.model = model
         self.tau = tau
         self.eta = eta
+        self.attention = attention
 
         (self.originalClass, self.originalConfident) = self.model.predict(self.image)
 
-        self.moves = GameMoves(self.data_set, self.model, self.image, self.tau, self.image_index)
+        self.moves = GameMoves(model = self.model, 
+                                image = self.image,
+                                tau = self.tau,
+                                pixel_bounds = (0, 1),
+                                attention = self.attention,
+                                verbose = 1)
 
         self.cost = {}
         self.numberOfVisited = {}
@@ -274,15 +280,16 @@ class MCTSCompetitive:
 
     def computeDistance(self, newImage):
         (distMethod, _) = self.eta
-        if distMethod == "L2":
-            dist = l2Distance(newImage, self.image)
-        elif distMethod == "L1":
-            dist = l1Distance(newImage, self.image)
-        elif distMethod == "Percentage":
-            dist = diffPercent(newImage, self.image)
-        elif distMethod == "NumDiffs":
-            dist = diffPercent(newImage, self.image) * self.image.size
-        return dist
+        return distMethod.dist(newImage, self.image)
+        # if distMethod == "L2":
+        #     dist = l2Distance(newImage, self.image)
+        # elif distMethod == "L1":
+        #     dist = l1Distance(newImage, self.image)
+        # elif distMethod == "Percentage":
+        #     dist = diffPercent(newImage, self.image)
+        # elif distMethod == "NumDiffs":
+        #     dist = diffPercent(newImage, self.image) * self.image.size
+        # return dist
 
     def sampleNext(self, k):
         activations1 = self.moves.applyManipulation(self.image, self.atomicManipulationPath)

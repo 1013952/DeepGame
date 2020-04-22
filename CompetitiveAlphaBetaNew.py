@@ -10,12 +10,12 @@ Email: min.wu@cs.ox.ac.uk
 """
 from numpy import inf
 
-from FeatureExtraction import *
+from GameMovesNew import *
 from basics import *
 
 
 class CompetitiveAlphaBeta:
-    def __init__(self, image, model, eta, tau, bounds=(0, 1), attention=False):
+    def __init__(self, image, model, eta, tau, bounds=(0, 1), attention=False, verbose = 0):
         self.IMAGE = image
         self.IMAGE_BOUNDS = bounds
         self.MODEL = model
@@ -23,14 +23,15 @@ class CompetitiveAlphaBeta:
         self.DIST_VAL = eta[1]
         self.TAU = tau
         self.LABEL, _ = self.MODEL.predict(self.IMAGE)
+        self.verbose = verbose
         self.attention = attention
 
-        feature_extraction = None
-        if attention:
-            feature_extraction = FeatureExtraction(pattern = 'attention')
-        else:
-            feature_extraction = FeatureExtraction(pattern='grey-box')
-        self.PARTITIONS = feature_extraction.get_partitions(self.IMAGE, self.MODEL, num_partition=10)
+        self.game_moves = GameMoves(model = self.MODEL,
+                                    image = self.IMAGE,
+                                    tau = self.TAU,
+                                    pixel_bounds = self.IMAGE_BOUNDS,
+                                    attention = self.attention,
+                                    verbose = 1)
 
         self.ALPHA = {}
         self.BETA = {}
@@ -99,15 +100,7 @@ class CompetitiveAlphaBeta:
 
     def cal_distance(self, image1, image2):
         return self.DIST_METRIC.dist(image1, image2)
-        if self.DIST_METRIC == 'L0':
-            return l0Distance(image1, image2)
-        elif self.DIST_METRIC == 'L1':
-            return l1Distance(image1, image2)
-        elif self.DIST_METRIC == 'L2':
-            return l2Distance(image1, image2)
-        else:
-            print("Unrecognised distance metric. "
-                  "Try 'L0', 'L1', or 'L2'.")
+
 
     def play_game(self, image):
 
@@ -161,69 +154,3 @@ class CompetitiveAlphaBeta:
             self.LEAST_FRAGILE_FEATURE = self.ALPHA
             print("Among fragile features, the least fragile feature is:\n"
                   % self.LEAST_FRAGILE_FEATURE)
-
-
-"""
-    def play_game(self, image):
-        self.player1(image)
-        for partitionID, beta in self.MANI_BETA:
-            print(partitionID, beta)
-            if beta is None:
-                print("Feature %s is robust." % partitionID)
-                self.MANI_BETA.pop(partitionID)
-                self.ROBUST_FEATURE_FOUND = True
-                self.ROBUST_FEATURE.append(partitionID)
-        if self.MANI_BETA:
-            self.FRAGILE_FEATURE_FOUND = True
-            self.ALPHA = max(self.BETA, key=self.BETA.get)
-            self.LEAST_FRAGILE_FEATURE = self.ALPHA
-            print("Among fragile features, the least fragile feature is:\n"
-                  % self.LEAST_FRAGILE_FEATURE)
-
-    def player1(self, image, partition_idx=None):
-        # Alpha
-        if partition_idx is None:
-            for partitionID in self.PARTITIONS.keys():
-                self.MANI_BETA = {}
-                self.MANI_DIST = {}
-                self.CURRENT_MANI = ()
-                print("partition ID:", partitionID)
-                self.player2(image, partitionID)
-        else:
-            self.player2(image, partition_idx)
-
-    def player2(self, image, partition_idx):
-        # Beta
-        pixels = self.PARTITIONS[partition_idx]
-        if not self.MANI_DIST:
-            self.target_pixels(image, pixels)
-            self.player1(image, partition_idx=partition_idx)
-        else:
-            min_dist = min(self.MANI_BETA.values())
-            print("Current min distance:", min_dist)
-            if min_dist is not inf:
-                print("Adversary found.")
-                adv_mani = min(self.MANI_BETA, key=self.MANI_BETA.get)
-                print("Manipulations:", adv_mani)
-                adv_dist = self.MANI_BETA[adv_mani]
-                self.BETA.update({partition_idx: [adv_mani, adv_dist]})
-            elif min(self.MANI_DIST.values()) >= self.DIST_VAL:
-                print("Adversarial distance exceeds distance bound.")
-                self.BETA.update({partition_idx: None})
-            else:
-                print("Adversary not found.")
-                mani_distance = copy.deepcopy(self.MANI_BETA)
-                for atom, _ in mani_distance.items():
-                    self.MANI_BETA.pop(atom)
-                    self.CURRENT_MANI = atom
-                    self.MANI_DIST.pop(atom)
-
-                    new_image = copy.deepcopy(self.IMAGE)
-                    atomic_list = [atom[i:i + 4] for i in range(0, len(atom), 4)]
-                    for atomic in atomic_list:
-                        valid, new_image = self.apply_atomic_manipulation(new_image, atomic)
-
-                    self.target_pixels(new_image, pixels)
-
-                self.player1(image, partition_idx)
-"""

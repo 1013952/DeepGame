@@ -14,9 +14,10 @@ import heapq
 from FeatureExtraction import *
 from basics import *
 
+import time
 
 class CooperativeAStar:
-    def __init__(self, dataset, idx, image, model, eta, tau, bounds=(0, 1)):
+    def __init__(self, dataset, idx, image, model, eta, tau, bounds=(0, 1), attention = False):
         self.DATASET = dataset
         self.IDX = idx
         self.IMAGE = image
@@ -27,7 +28,11 @@ class CooperativeAStar:
         self.TAU = tau
         self.LABEL, _ = self.MODEL.predict(self.IMAGE)
 
-        feature_extraction = FeatureExtraction(pattern='grey-box')
+        feature_extraction = None
+        if attention:
+            feature_extraction = FeatureExtraction(pattern='attention')
+        else:
+            feature_extraction = FeatureExtraction(pattern='grey-box')
         self.PARTITIONS = feature_extraction.get_partitions(self.IMAGE, self.MODEL, num_partition=10)
 
         self.DIST_EVALUATION = {}
@@ -140,6 +145,8 @@ class CooperativeAStar:
     def play_game(self, image):
         new_image = copy.deepcopy(self.IMAGE)
         new_label, new_confidence = self.MODEL.predict(new_image)
+        print("Image copied")
+        time.sleep(10)
 
         while self.cal_distance(self.IMAGE, new_image) <= self.DIST_VAL and new_label == self.LABEL:
             # for partitionID in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]:
@@ -149,7 +156,7 @@ class CooperativeAStar:
 
             self.ADV_MANIPULATION = min(self.DIST_EVALUATION, key=self.DIST_EVALUATION.get)
             print("Current best manipulations:", self.ADV_MANIPULATION)
-            # print("%s distance (estimated): %s" % (self.DIST_METRIC, self.DIST_EVALUATION[self.ADV_MANIPULATION]))
+            print("%s distance (estimated): %s" % (self.DIST_METRIC, self.DIST_EVALUATION[self.ADV_MANIPULATION]))
             self.DIST_EVALUATION.pop(self.ADV_MANIPULATION)
 
             new_image = copy.deepcopy(self.IMAGE)

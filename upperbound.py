@@ -1,17 +1,22 @@
 from __future__ import print_function
 from NeuralNetwork import *
+from AttentionNetwork import *
 from DataSet import *
 from CompetitiveMCTS import *
 from CooperativeMCTS import *
 
 
-def upperbound(dataSetName, bound, tau, gameType, image_index, eta):
+def upperbound(dataSetName, bound, tau, gameType, image_index, eta, attention=False):
     start_time = time.time()
 
     MCTS_all_maximal_time = 300
     MCTS_level_maximal_time = 60
 
-    NN = NeuralNetwork(dataSetName)
+    NN = None
+    if attention:
+        NN = AttentionNetwork(data_set= dataSetName)
+    else:
+        NN = NeuralNetwork(dataSetName)
     NN.load_network()
     print("Dataset is %s." % NN.data_set)
     NN.model.summary()
@@ -28,7 +33,7 @@ def upperbound(dataSetName, bound, tau, gameType, image_index, eta):
 
     # choose between "cooperative" and "competitive"
     if gameType == 'cooperative':
-        mctsInstance = MCTSCooperative(dataSetName, NN, image_index, image, tau, eta)
+        mctsInstance = MCTSCooperative(dataSetName, NN, image_index, image, tau, eta, attention)
         mctsInstance.initialiseMoves()
 
         start_time_all = time.time()
@@ -106,7 +111,7 @@ def upperbound(dataSetName, bound, tau, gameType, image_index, eta):
 
     elif gameType == 'competitive':
 
-        mctsInstance = MCTSCompetitive(dataSetName, NN, image_index, image, tau, eta)
+        mctsInstance = MCTSCompetitive(dataSetName, NN, image_index, image, tau, eta, attention)
         mctsInstance.initialiseMoves()
 
         start_time_all = time.time()
