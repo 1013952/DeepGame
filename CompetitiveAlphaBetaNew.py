@@ -10,147 +10,148 @@ Email: min.wu@cs.ox.ac.uk
 """
 from numpy import inf
 
-from GameMovesNew import *
+from FeatureExtraction import *
+from GameMoves import *
 from basics import *
+
+class Node:
+    # Trick for variable sharing
+    game_moves = [None]
+    next_index = [0]
+
+    def __init__(self, manipulation, depth = 0, children = None, max_player = None, player_one_choice = None):
+        self.depth = depth
+        self.index = self.next_index[0]
+        self.next_index[0] += 1
+        self.manipulation = manipulation
+        if children is None:
+            self.children = []
+        else:
+            self.children = children
+        self.max_player = max_player
+        self.player_one_choice = player_one_choice
+
+    def flat(self):
+        return tuple(sorted(self.manipulation.items()))
+
+class PlayerOneNode(Node):
+    def make_children(self):
+        self.children = []
+        for move in self.game_moves[0].player_one:
+            self.children.append(PlayerTwoNode(
+                    depth = self.depth,
+                    manipulation = self.manipulation,
+                    children = None,
+                    max_player = False,
+                    player_one_choice = move
+                ))
+
+class PlayerTwoNode(Node):
+    def make_children(self):
+        self.children = []
+        for move in self.game_moves[0].player_two[self.player_one_choice]:
+            new_manip = mergeTwoDicts(self.manipulation, move)
+            if len(new_manip) <= len(self.manipulation):
+                continue
+            self.children.append(PlayerOneNode(
+                depth = self.depth + 1,
+                manipulation = mergeTwoDicts(self.manipulation, move),
+                children = None,
+                max_player = True,
+                player_one_choice = None))
+
+
 
 
 class CompetitiveAlphaBeta:
-    def __init__(self, image, model, eta, tau, bounds=(0, 1), attention=False, verbose = 0):
-        self.IMAGE = image
-        self.IMAGE_BOUNDS = bounds
-        self.MODEL = model
-        self.DIST_METRIC = eta[0]
-        self.DIST_VAL = eta[1]
-        self.TAU = tau
-        self.LABEL, _ = self.MODEL.predict(self.IMAGE)
-        self.verbose = verbose
+    def __init__(self, data_set_name, image, image_index, model, eta, tau, attention=False):
+        self.image = image
+        self.data_set_name = data_set_name
+        self.image_index = image_index
+        self.model = model
+        self.eta = eta
+        self.tau = tau
+        self.root_label, self.root_conf = self.model.predict(self.image)
         self.attention = attention
 
-        self.game_moves = GameMoves(model = self.MODEL,
-                                    image = self.IMAGE,
-                                    tau = self.TAU,
-                                    pixel_bounds = self.IMAGE_BOUNDS,
-                                    attention = self.attention,
-                                    verbose = 1)
+        self.game_moves = GameMoves(model = self.model,
+                                    image = self.image,
+                                    tau = self.tau,
+                                    pixel_bounds = (0, 1),
+                                    attention = self.attention)
+        self.game_moves.generate_moves(collapse_channels = False)
 
-        self.ALPHA = {}
-        self.BETA = {}
-        self.MANI_BETA = {}
-        self.MANI_DIST = {}
-        self.CURRENT_MANI = ()
+        self.image_bounds = (0, 1)
+        self.depth_cutoff = 50
+        self.best_case = (self.eta[1], {})
 
-        self.ROBUST_FEATURE_FOUND = False
-        self.ROBUST_FEATURE = []
-        self.FRAGILE_FEATURE_FOUND = False
-        self.LEAST_FRAGILE_FEATURE = []
+        self.visited = set()
 
-        print("Distance metric %s, with bound value %s." % (self.DIST_METRIC, self.DIST_VAL))
+        self.robust_feature_found = False
+        self.robust_feature = []
+        self.fragile_feature_found = False
+        self.least_fragile_feature = []
 
-    def target_pixels(self, image, pixels):
-        (row, col, chl) = image.shape
+    def alphabeta(self, alpha, beta, node):
+        node_image = self.game_moves.applyManipulation(self.image, node.manipulation)
+        dist = self.eta[0].dist(self.image, node_image)
 
-        atomic_manipulations = []
-        manipulated_images = []
-        for (x, y) in pixels:
-            for z in range(chl):
-                atomic = (x, y, z, 1 * self.TAU)
-                valid, atomic_image = self.apply_atomic_manipulation(image, atomic)
-                if valid is True:
-                    manipulated_images.append(atomic_image)
-                    atomic_manipulations.append(atomic)
-                atomic = (x, y, z, -1 * self.TAU)
-                valid, atomic_image = self.apply_atomic_manipulation(image, atomic)
-                if valid is True:
-                    manipulated_images.append(atomic_image)
-                    atomic_manipulations.append(atomic)
-        manipulated_images = np.asarray(manipulated_images)
+        if dist > self.eta[1]:
+            return self.eta[1]
 
-        probabilities = self.MODEL.model.predict(manipulated_images)
-        labels = probabilities.argmax(axis=1)
+        if node.depth > self.depth_cutoff:
+            return self.eta[1] # Change to heuristic - lower-bound from L1 dist
 
-        for idx in range(len(manipulated_images)):
-            if not diffImage(manipulated_images[idx], self.IMAGE):
-                continue
-            dist = self.cal_distance(manipulated_images[idx], self.IMAGE)
-            if labels[idx] != self.LABEL:
-                self.MANI_BETA.update({self.CURRENT_MANI + atomic_manipulations[idx]: dist})
-                self.MANI_DIST.update({self.CURRENT_MANI + atomic_manipulations[idx]: dist})
-            else:
-                self.MANI_BETA.update({self.CURRENT_MANI + atomic_manipulations[idx]: inf})
-                self.MANI_DIST.update({self.CURRENT_MANI + atomic_manipulations[idx]: dist})
+        self.visited.add(node.flat())
+        if len(self.visited) % 100 == 0:
+            print("%d nodes visited." % len(self.visited))
 
-    def apply_atomic_manipulation(self, image, atomic):
-        atomic_image = image.copy()
-        chl = atomic[0:3]
-        manipulate = atomic[3]
+        new_label, new_conf = self.model.predict(node_image)
+        if new_label != self.root_label:
+            print("Adversarial example found at distance %d." % d)
+            return dist 
 
-        if (atomic_image[chl] >= max(self.IMAGE_BOUNDS) and manipulate >= 0) or (
-                atomic_image[chl] <= min(self.IMAGE_BOUNDS) and manipulate <= 0):
-            valid = False
-            return valid, atomic_image
+        if node.max_player is True:
+            value = - np.infty
+            node.make_children()
+            for child in node.children:
+                if child in self.visited:
+                    continue
+
+                value = max(value, self.alphabeta(alpha, beta, child))
+                if value > alpha:
+                    self.best_case = (node.manipulation, value)
+                    if node.depth < 3:
+                        print("Alpha updating to %f at node %d." % (value, node.index))
+                alpha = max(alpha, value)
+                if alpha >= beta:
+                    break # beta cutoff
+            return value
         else:
-            if atomic_image[chl] + manipulate > max(self.IMAGE_BOUNDS):
-                atomic_image[chl] = max(self.IMAGE_BOUNDS)
-            elif atomic_image[chl] + manipulate < min(self.IMAGE_BOUNDS):
-                atomic_image[chl] = min(self.IMAGE_BOUNDS)
-            else:
-                atomic_image[chl] += manipulate
-            valid = True
-            return valid, atomic_image
+            value = np.infty
+            node.make_children()
+            for child in node.children:
+                if child in self.visited:
+                    continue 
+                child_image = self.game_moves.applyManipulation(self.image, child.manipulation)
+                if self.flat(child_image) in self.visited:
+                    continue
+                value = min(value, self.alphabeta(alpha, beta, child))
+                if value < beta:
+                    if node.depth < 3:
+                        print("Beta updating to %f at node %d." % (value, node.index))
+                beta = min(beta, value)
+                if alpha >= beta:
+                    break # alpha cutoff
+            return value
 
-    def cal_distance(self, image1, image2):
-        return self.DIST_METRIC.dist(image1, image2)
+    def flat(self, image):
+        return tuple(image.flatten())
 
 
-    def play_game(self, image):
+    def search(self, image_index):
+        self.visited = set()
+        root_node = PlayerOneNode(manipulation = {})
+        root_node.game_moves[0] = self.game_moves
 
-        for partitionID, pixels in self.PARTITIONS.items():
-            self.MANI_BETA = {}
-            self.MANI_DIST = {}
-            self.CURRENT_MANI = ()
-            print("partition ID:", partitionID)
-            self.target_pixels(image, pixels)
-
-            while min(self.MANI_BETA.values()) is inf and min(self.MANI_DIST.values()) <= self.DIST_VAL:
-                min_dist = min(self.MANI_BETA.values())
-                print("Current min distance:", min_dist)
-
-                print("Adversary not found.")
-                mani_distance = copy.deepcopy(self.MANI_BETA)
-                for atom, _ in mani_distance.items():
-                    self.MANI_BETA.pop(atom)
-                    self.CURRENT_MANI = atom
-                    self.MANI_DIST.pop(atom)
-
-                    new_image = copy.deepcopy(self.IMAGE)
-                    atomic_list = [atom[i:i + 4] for i in range(0, len(atom), 4)]
-                    for atomic in atomic_list:
-                        valid, new_image = self.apply_atomic_manipulation(new_image, atomic)
-
-                    self.target_pixels(new_image, pixels)
-
-            if min(self.MANI_BETA.values()) > self.DIST_VAL or min(self.MANI_DIST.values()) > self.DIST_VAL:
-                print("Distance:", )
-                print("Adversarial distance exceeds distance bound.")
-                self.BETA.update({partitionID: None})
-            elif min(self.MANI_BETA.values()) is not inf:
-                print("Adversary found.")
-                adv_mani = min(self.MANI_BETA, key=self.MANI_BETA.get)
-                print("Manipulations:", adv_mani)
-                adv_dist = self.MANI_BETA[adv_mani]
-                print("Distance:", adv_dist)
-                self.BETA.update({partitionID: [adv_mani, adv_dist]})
-
-        for partitionID, beta in self.MANI_BETA:
-            print(partitionID, beta)
-            if beta is None:
-                print("Feature %s is robust." % partitionID)
-                self.MANI_BETA.pop(partitionID)
-                self.ROBUST_FEATURE_FOUND = True
-                self.ROBUST_FEATURE.append(partitionID)
-        if self.MANI_BETA:
-            self.FRAGILE_FEATURE_FOUND = True
-            self.ALPHA = max(self.BETA, key=self.BETA.get)
-            self.LEAST_FRAGILE_FEATURE = self.ALPHA
-            print("Among fragile features, the least fragile feature is:\n"
-                  % self.LEAST_FRAGILE_FEATURE)
+        return self.alphabeta(alpha = -np.inf, beta = np.inf, node = root_node)

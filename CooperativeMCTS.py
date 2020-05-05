@@ -1,4 +1,4 @@
-5  # !/usr/bin/env python
+# !/usr/bin/env python
 
 """
 A data structure for organising search
@@ -16,7 +16,7 @@ import random
 import math
 
 from basics import *
-from GameMovesNew import *
+from GameMoves import *
 
 MCTS_multi_samples = 3
 effectiveConfidenceWhenChanging = 0.0
@@ -42,6 +42,11 @@ class MCTSCooperative:
                                 pixel_bounds = (0, 1),
                                 attention = self.attention,
                                 verbose = 1)
+        # Ensure that the GameMoves object has actions initialised
+        self.moves.generate_moves(collapse_channels = True)
+        if self.verbose == 1:
+            print("%s actions have been initialised." % (len(self.actions)))
+
 
         self.cost = {}
         self.numberOfVisited = {}
@@ -56,7 +61,7 @@ class MCTSCooperative:
         self.manipulation = {}
         # initialise root node
         self.manipulation[-1] = {}
-        self.initialiseLeafNode(0, -1, {})
+        self.initialiseLeafNode(0, None, {})
 
         # record all the keypoints: index -> kp
         self.keypoints = {}
@@ -85,57 +90,24 @@ class MCTSCooperative:
         self.availableActionIDs = []
         self.usedActionIDs = []
 
-    def initialiseMoves(self):
-        # initialise actions according to the type of manipulations
-        actions = self.moves.moves
-        self.keypoints[0] = 0
-        i = 1
-        for k in actions[0]:
-            self.keypoints[i] = k
-            i += 1
 
-        for i in range(len(actions)):
-            ast = {}
-            for j in range(len(actions[i])):
-                ast[j] = actions[i][j]
-            self.actions[i] = ast
-        print("%s actions have been initialised." % (len(self.actions)))
-
-    def initialiseLeafNode(self, index, parentIndex, newAtomicManipulation):
+    def initialiseLeafNode(self, index, parentObject, newAtomicManipulation):
         print("initialising a leaf node %s from the node %s" % (index, parentIndex))
-        self.manipulation[index] = mergeTwoDicts(self.manipulation[parentIndex], newAtomicManipulation)
-        self.cost[index] = 0
-        self.parent[index] = parentIndex
-        self.children[index] = []
-        self.fullyExpanded[index] = False
-        self.numberOfVisited[index] = 0
-
-    def destructor(self):
-        self.image = 0
-        self.image = 0
-        self.model = 0
-        self.model = 0
-        self.manipulatedDimensions = {}
-        self.manipulation = {}
-        self.cost = {}
-        self.parent = {}
-        self.children = {}
-        self.fullyExpanded = {}
-        self.numberOfVisited = {}
-
-        self.actions = {}
-        self.usedActionsID = {}
-        self.indexToActionID = {}
+        new_leaf = Node(index = index,
+                        manipulation = mergeTwoDicts(self.manipulation[parentIndex], newAtomicManipulation),
+                        )
 
     # move one step forward
     # it means that we need to remove children other than the new root
-    def makeOneMove(self, newRootIndex):
-        if self.keypoint[newRootIndex] != 0:
+    def makeOneMove(self, newRootObject):
+        if newRootObject.player_to_act == 1:
             player = "the first player"
         else:
             player = "the second player"
-        print("%s making a move into the new root %s, whose value is %s and visited number is %s" % (
-            player, newRootIndex, self.cost[newRootIndex], self.numberOfVisited[newRootIndex]))
+        if self.verbose == 1:
+            print("%s making a move into the new root %s, whose value is %s and visited number is %s" % (
+                player, newRootIndex, self.cost[newRootIndex], self.numberOfVisited[newRootIndex]))
+        
         self.removeChildren(self.rootIndex, [newRootIndex])
         self.rootIndex = newRootIndex
 
@@ -255,35 +227,10 @@ class MCTSCooperative:
     def computeDistance(self, newImage):
         (distMethod, _) = self.eta
         return distMethod.dist(newImage, self.image)
-        # if distMethod == "L2":
-        #     dist = l2Distance(newImage, self.image)
-        # elif distMethod == "L1":
-        #     dist = l1Distance(newImage, self.image)
-        # elif distMethod == "Percentage":
-        #     dist = diffPercent(newImage, self.image)
-        # elif distMethod == "NumDiffs":
-        #     dist = diffPercent(newImage, self.image) * self.image.size
-        # return dist
 
     def sampleNext(self, k):
         activations1 = self.moves.applyManipulation(self.image, self.atomicManipulationPath)
         (newClass, newConfident) = self.model.predict(activations1)
-        '''
-        if newClass != self.originalClass and newConfident > effectiveConfidenceWhenChanging:
-            print("sampling a path ends in a terminal node with depth %s... " % self.depth)
-            self.atomicManipulationPath = self.scrutinizePath(self.atomicManipulationPath)
-            self.numAdv += 1
-            print("current best %s, considered to be replaced by %s" % (self.bestCase[0], dist))
-            if self.bestCase[0] > dist:
-                print("update best case from %s to %s" % (self.bestCase[0], dist))
-                self.numConverge += 1
-                self.bestCase = (dist, self.atomicManipulationPath)
-                path0 = "%s_pic/%s_currentBest_%s.png" % (self.data_set, self.image_index, self.numConverge)
-                self.model.save_input(activations1, path0)
-            return (True, newConfident)
-        else: 
-            return (False, newConfident)
-        '''
 
         (distMethod, distVal) = self.eta
         dist = self.computeDistance(activations1)
@@ -363,38 +310,3 @@ class MCTSCooperative:
             return self.scrutinizePath(manipulations)
         else:
             return manipulations
-
-    def terminalNode(self, index):
-        activations1 = self.moves.applyManipulation(self.image, self.manipulation[index])
-        (newClass, _) = self.model.predict(activations1)
-        return newClass != self.originalClass
-
-    def terminatedByEta(self, index):
-        activations1 = self.moves.applyManipulation(self.image, self.manipulation[index])
-        dist = self.computeDistance(activations1)
-        print("terminated by controlled search: distance = %s" % dist)
-        return dist > self.eta[1]
-
-    def applyManipulation(self, manipulation):
-        activations1 = self.moves.applyManipulation(self.image, manipulation)
-        return activations1
-
-    def l2Dist(self, index):
-        activations1 = self.moves.applyManipulation(self.image, self.manipulation[index])
-        return l2Distance(self.image, activations1)
-
-    def l1Dist(self, index):
-        activations1 = self.moves.applyManipulation(self.image, self.manipulation[index])
-        return l1Distance(self.image, activations1)
-
-    def l0Dist(self, index):
-        activations1 = self.moves.applyManipulation(self.image, self.manipulation[index])
-        return l0Distance(self.image, activations1)
-
-    def diffImage(self, index):
-        activations1 = self.moves.applyManipulation(self.image, self.manipulation[index])
-        return diffImage(self.image, activations1)
-
-    def diffPercent(self, index):
-        activations1 = self.moves.applyManipulation(self.image, self.manipulation[index])
-        return diffPercent(self.image, activations1)

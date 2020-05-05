@@ -24,10 +24,8 @@ from DataSet import *
 # Define a Neural Network class.
 class NeuralNetwork:
     # Specify which dataset at initialisation.
-    def __init__(self, data_set):
-        self.data_set = data_set
+    def __init__(self):
         self.model = Sequential()
-        assure_path_exists("%s_pic/" % self.data_set)
 
     def predict(self, image):
         import numpy as np
@@ -38,9 +36,12 @@ class NeuralNetwork:
         return new_class, confident
 
     # To train a neural network.
-    def train_network(self):
+    def train_network(self, data_set_name):
+        self.data_set_name = data_set_name
+        assure_path_exists("%s_pic/" % self.data_set_name)
+
         # Train an mnist model.
-        if self.data_set == 'mnist':
+        if self.data_set_name == 'mnist':
             batch_size = 128
             num_classes = 10
             epochs = 50
@@ -90,7 +91,7 @@ class NeuralNetwork:
             self.model = model
 
         # Train a cifar10 model.
-        elif self.data_set == 'cifar10':
+        elif self.data_set_name == 'cifar10':
             batch_size = 128
             num_classes = 10
             epochs = 50
@@ -164,7 +165,7 @@ class NeuralNetwork:
             self.model = model
 
             # Train a gtsrb model.
-        elif self.data_set == 'gtsrb':
+        elif self.data_set_name == 'gtsrb':
             batch_size = 128
             num_classes = 43
             epochs = 50
@@ -230,20 +231,20 @@ class NeuralNetwork:
             self.model = model
 
         else:
-            print("Unsupported dataset %s. Try 'mnist' or 'cifar10' or 'gtsrb'." % self.data_set)
+            print("Unsupported dataset %s. Try 'mnist' or 'cifar10' or 'gtsrb'." % self.data_set_name)
         self.save_network()
 
     # To save the neural network to disk.
     def save_network(self):
-        if self.data_set == 'mnist':
+        if self.data_set_name == 'mnist':
             self.model.save('models/mnist.h5')
             print("Neural network saved to disk.")
 
-        elif self.data_set == 'cifar10':
+        elif self.data_set_name == 'cifar10':
             self.model.save('models/cifar10.h5')
             print("Neural network saved to disk.")
 
-        elif self.data_set == 'gtsrb':
+        elif self.data_set_name == 'gtsrb':
             self.model.save('models/gtsrb.h5')
             print("Neural network saved to disk.")
 
@@ -251,16 +252,19 @@ class NeuralNetwork:
             print("save_network: Unsupported dataset.")
 
     # To load a neural network from disk.
-    def load_network(self):
-        if self.data_set == 'mnist':
+    def load_network(self, data_set_name):
+        self.data_set_name = data_set_name
+        assure_path_exists("%s_pic/" %self.data_set_name)
+
+        if self.data_set_name == 'mnist':
             self.model = load_model('models/mnist.h5')
             print("Neural network loaded from disk.")
 
-        elif self.data_set == 'cifar10':
+        elif self.data_set_name == 'cifar10':
             self.model = load_model('models/cifar10.h5')
             print("Neural network loaded from disk.")
 
-        elif self.data_set == 'gtsrb':
+        elif self.data_set_name == 'gtsrb':
             try:
                 self.model = load_model('models/gtsrb.h5')
                 print("Neural network loaded from disk.")
@@ -278,11 +282,11 @@ class NeuralNetwork:
         # cv2.imwrite(filename, image_cv * 255.0, [cv2.IMWRITE_PNG_COMPRESSION, 9])
 
     def get_label(self, index):
-        if self.data_set == 'mnist':
+        if self.data_set_name == 'mnist':
             labels = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
-        elif self.data_set == 'cifar10':
+        elif self.data_set_name == 'cifar10':
             labels = ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
-        elif self.data_set == 'gtsrb':
+        elif self.data_set_name == 'gtsrb':
             labels = ['speed limit 20 (prohibitory)', 'speed limit 30 (prohibitory)',
                       'speed limit 50 (prohibitory)', 'speed limit 60 (prohibitory)',
                       'speed limit 70 (prohibitory)', 'speed limit 80 (prohibitory)',

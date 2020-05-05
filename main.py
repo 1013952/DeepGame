@@ -4,10 +4,11 @@ import sys
 import os
 
 from NeuralNetwork import *
+from AttentionNetwork import *
 from DataSet import *
 from DataCollection import *
 from upperboundNew import upperbound
-from lowerboundNew import lowerbound
+from lowerbound import lowerbound
 from basicsNew import *
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
@@ -59,6 +60,7 @@ if len(sys.argv) == 9:
         print("please specify as the 6th argument the distance: [int/float]")
         exit
     eta = (distMeasure, dist_cap)
+
  
     if isinstance(float(sys.argv[7]), float):
         tau = float(sys.argv[7])
@@ -84,20 +86,33 @@ elif len(sys.argv) == 1:
     tau = 1
     attention = 0
 
-if bound == 'ub':
-    ub_instance = upperbound(data_set = dataSetName,
-                                bound = bound,
+
+if attention is True:
+    nn = AttentionNetwork()
+else:
+    nn = NeuralNetwork()
+
+if bound_type == 'ub':
+    ub_instance = upperbound(data_set_name = data_set_name,
                                 tau = tau,
-                                game_type = gameType,
+                                game_type = game_type,
                                 eta = eta,
-                                attention = attention,
-                                model = None,
-                                verbose = 1)
+                                model = nn,
+                                verbose = 1,
+                                attention = attention)
 
     elapsedTime, newConfident, percent, l2dist, l1dist, l0dist, maxFeatures = ub_instance.search(image_index = image_index)
 
-elif bound == 'lb':
-    lowerbound(dataSetName, image_index, gameType, eta, tau, attention)
+elif bound_type == 'lb':
+    lb_instance = lowerbound(data_set_name = data_set_name, 
+                            tau = tau,
+                            game_type = game_type,
+                            eta = eta,
+                            model = nn,
+                            verbose = 1,
+                            attention = attention)
+
+    elapsedTime, newConfident, percent, l2dist, l1dist, l0dist, maxFeatures = lb_instance.search(image_index = image_index)
 
 else:
     print("Unrecognised bound setting.\n"

@@ -10,77 +10,64 @@ Author: Min Wu
 Email: min.wu@cs.ox.ac.uk
 """
 
-from CooperativeAStarNew import *
-from CompetitiveAlphaBeta import *
+from CooperativeAStar import *
+from CompetitiveAlphaBetaNew import *
 from NeuralNetwork import *
 from DataSet import *
+from bound import *
+
+class lowerbound(bound):
 
 
-def lowerbound(dataset_name, image_index, game_type, eta, tau, attention=False):
-    NN = None
-    if attention:
-        NN = AttentionNetwork(data_set = dataset_name)
-    else:
-        NN = NeuralNetwork(dataset_name)
-    NN.load_network()
-    print("Dataset is %s." % NN.data_set)
-    NN.model.summary()
+    def search(self, image_index):
+        self.bound_type = 'lb'
 
-    dataset = DataSet(dataset_name, 'testing')
-    image = dataset.get_input(image_index)
-    (label, confidence) = NN.predict(image)
-    label_str = NN.get_label(int(label))
-    print("Working on input with index %s, whose class is '%s' and the confidence is %s."
-          % (image_index, label_str, confidence))
-    print("The second player is being %s." % game_type)
+        image = self.dataSet.get_input(image_index)
+        label, conf = self.model.predict(image)
+        label_str = self.model.get_label(int(label))
 
-    path = "%s_pic/idx_%s_label_[%s]_with_confidence_%s.png" % (
-        dataset_name, image_index, label_str, confidence)
-    NN.save_input(image, path)
+        if self.verbose == 1:
+            print("Working on input with index %s, whose class is '%s' and the confidence is %s."
+                  % (image_index, label_str, conf))
+            print("The second player is being %s." % self.game_type)
 
-    if game_type == 'cooperative':
-        tic = time.time()
-        cooperative = CooperativeAStar(dataset_name, image_index, image, NN, eta, tau, attention=attention)
-        cooperative.play_game(image)
-        if cooperative.ADVERSARY_FOUND is True:
-            elapsed = time.time() - tic
-            adversary = cooperative.ADVERSARY
-            adv_label, adv_confidence = NN.predict(adversary)
-            adv_label_str = NN.get_label(int(adv_label))
+        # path = "%s_pic/idx_%s_label_[%s]_with_confidence_%s.png" % (
+        #     self.data_set_name, image_index, label_str, confidence)
+        # self.save_input(image, path)
 
-            print("\nFound an adversary within pre-specified bounded computational resource. "
-                  "\nThe following is its information: ")
-            print("difference between images: %s" % (diffImage(image, adversary)))
-            l2dist = l2Distance(image, adversary)
-            l1dist = l1Distance(image, adversary)
-            l0dist = l0Distance(image, adversary)
-            percent = diffPercent(image, adversary)
-            print("L2 distance %s" % l2dist)
-            print("L1 distance %s" % l1dist)
-            print("L0 distance %s" % l0dist)
-            print("manipulated percentage distance %s" % percent)
-            print("class is changed into '%s' with confidence %s\n" % (adv_label_str, adv_confidence))
-
-            path = "%s_pic/idx_%s_modified_into_[%s]_with_confidence_%s.png" % (
-                dataset_name, image_index, adv_label_str, adv_confidence)
-            NN.save_input(adversary, path)
-            if eta[0] == 'L0':
-                dist = l0dist
-            elif eta[0] == 'L1':
-                dist = l1dist
-            elif eta[0] == 'L2':
-                dist = l2dist
-            else:
-                print("Unrecognised distance metric.")
-            path = "%s_pic/idx_%s_modified_diff_%s=%s_time=%s.png" % (
-                dataset_name, image_index, eta[0], dist, elapsed)
-            NN.save_input(np.absolute(image - adversary), path)
+        if self.game_type == 'cooperative':
+            game_instance = CooperativeAStar(data_set_name = self.data_set_name,
+                                            image_index = image_index,
+                                            image = image,
+                                            model = self.model,
+                                            eta = self.eta,
+                                            tau = self.tau,
+                                            attention = self.attention)
         else:
+            game_instance = CompetitiveAlphaBeta(data_set_name = self.data_set_name,
+                                                image_index = image_index,
+                                                image = image,
+                                                model = self.model,
+                                                eta = self.eta,
+                                                tau = self.tau,
+                                                attention = self.attention)
+
+        start_time = time.time()
+        game_instance.search(image_index)
+
+        best_manip, best_value = game_instance.best_case
+        adversary = game_instance.game_moves.applyManipulation(image, best_manip)
+        new_label, new_conf = self.model.predict(adversary)
+        new_label_str = self.model.get_label(int(new_label))
+
+        if new_label != label:
+            l2dist, l1dist, l0dist, percent = self.success_callback(image_index, adversary)
+            return time.time() - start_time, new_conf, percent, l2dist, l1dist, l0dist, 0
+        else:
+            self.failure_callback()
+            return 0, 0, 0, 0, 0, 0, 0
+
+
+
+        def failure_callback(self):
             print("Adversarial distance exceeds distance budget.")
-
-    elif game_type == 'competitive':
-        competitive = CompetitiveAlphaBeta(image, NN, eta, tau, attention=attention)
-        competitive.play_game(image)
-
-    else:
-        print("Unrecognised game type. Try 'cooperative' or 'competitive'.")

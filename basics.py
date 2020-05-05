@@ -30,17 +30,33 @@ def numDiffs(image1, image2):
     return len(diffImage(image1, image2))
 
 
-def l2Distance(image1, image2):
-    return math.sqrt(np.sum(np.square(np.subtract(image1, image2))))
+class distMetric:
+    def dist(self, image1, image2):
+        raise NotImplementedError
 
+    def diag():
+        raise NotImplementedError
 
-def l1Distance(image1, image2):
-    return np.sum(np.absolute(np.subtract(image1, image2)))
+class l0Distance(distMetric):
+    def dist(self, image1, image2):
+        return np.count_nonzero(np.absolute(np.subtract(image1, image2)))
 
+    def diag():
+        return 1
 
-def l0Distance(image1, image2):
-    return np.count_nonzero(np.absolute(np.subtract(image1, image2)))
+class l1Distance(distMetric):
+    def dist(self, image1, image2):
+        return np.sum(np.absolute(np.subtract(image1, image2)))
 
+    def diag(n):
+        return n
+
+class l2Distance(distMetric):
+    def dist(self, image1, image2):
+        return math.sqrt(np.sum(np.square(np.subtract(image1, image2))))
+
+    def diag():
+        return math.sqrt(n)
 
 def mergeTwoDicts(x, y):
     z = x.copy()
@@ -49,12 +65,11 @@ def mergeTwoDicts(x, y):
             z[key] += y[key]
         else:
             z[key] = y[key]
+        if z[key] == 0:
+            z.pop(key, None)
     # z.update(y)
     return z
 
-
-def nprint(str):
-    return 0
 
 
 def printDict(dictionary):

@@ -5,6 +5,8 @@ in a black-box or grey-box pattern.
 
 Author: Min Wu
 Email: min.wu@cs.ox.ac.uk
+
+Refactored: Denitsa Markova
 """
 
 import copy
@@ -14,12 +16,17 @@ import random
 from scipy.stats import norm
 from keras import backend as K
 from AttentionNetwork import AttentionNetwork
+from itertools import combinations
 from matplotlib import pyplot as plt
+
 
 # Define a Feature Extraction class.
 class FeatureExtraction:
-    def __init__(self, pattern='grey-box', verbose=0):
-        self.PATTERN = pattern
+    def __init__(self, verbose=0):
+        # Verbosity patterns:
+        # 0 - no non-error message outputs
+        # 1 - logs to stdout
+        # 2 - logs to txt file
         self.verbose = verbose
 
         # black-box parameters
@@ -32,175 +39,24 @@ class FeatureExtraction:
         self.PIXEL_BOUNDS = (0, 1)
         self.NUM_OF_PIXEL_MANIPULATION = 2
 
+    def load_dataset(self, ex_type):
+        assert ex_type in ['gb', 'bb', 'att']
+        if ex_type == 'gb':
+            return GBExtraction(self.verbose)
+        if ex_type == 'bb':
+            return BBExtraction(self.verbose)
+        if ex_type == 'att':
+            return AttExtraction(self.verbose)
 
 
     # Get key points of an image.
     def get_key_points(self, image, num_partition=10):
-        self.NUM_PARTITION = num_partition
+        return range(self.NUM_PARTITION)
 
-        # Black-box pattern: get key points from SIFT,
-        # enlarge the image if it is small.
-        if self.PATTERN == 'black-box':
-            image = copy.deepcopy(image)
-
-            sift = cv2.xfeatures2d.SIFT_create()  # cv2.SIFT() # cv2.SURF(400)
-
-            if np.max(image) <= 1:
-                image = (image * 255).astype(np.uint8)
-            else:
-                image = image.astype(np.uint8)
-
-            if max(image.shape) < self.IMAGE_SIZE_BOUND:
-                # For a small image, SIFT works by enlarging the image.
-                image = cv2.resize(image, (0, 0), fx=self.IMG_ENLARGE_RATIO, fy=self.IMG_ENLARGE_RATIO)
-                key_points, _ = sift.detectAndCompute(image, None)
-                for i in range(len(key_points)):
-                    old_pt = (key_points[i].pt[0], key_points[i].pt[1])
-                    key_points[i].pt = (int(old_pt[0] / self.IMG_ENLARGE_RATIO),
-                                        int(old_pt[1] / self.IMG_ENLARGE_RATIO))
-            else:
-                key_points, _ = sift.detectAndCompute(image, None)
-
-        # Grey-box pattern: get key points from partition ID.
-        elif self.PATTERN == 'grey-box' or self.PATTERN == 'attention':
-            key_points = [key for key in range(self.NUM_PARTITION)]
-
-        else:
-            print("Unrecognised feature extraction pattern. "
-                  "Try 'black-box' or 'grey-box'.")
-
-        return key_points
 
     # Get partitions of an image.
-    #TODO revert default to 10 partitions
-    def get_partitions(self, image, model=None, num_partition=5, pixel_bounds=(0, 1)):
-        self.NUM_PARTITION = num_partition
-        self.PIXEL_BOUNDS = pixel_bounds
-
-        # Grey-box/attention pattern: must specify a neural network.
-        if (self.PATTERN == 'grey-box' or self.PATTERN == 'attention') and model is None:
-            print("For '%s' feature extraction, please specify a neural network." % self.PATTERN)
-            exit
-        # Model must be of correct subclass
-        if self.PATTERN == 'attention' and not isinstance(model, AttentionNetwork):
-            prin("For attention feature extraction, model must be an attention network.")
-            exit
-
-        # Grey-box pattern: get partitions from saliency map.
-        if self.PATTERN == 'grey-box':
-            if self.verbose == 1:
-                print("Extracting image features using '%s' pattern." % self.PATTERN)
-
-            saliency_map = self.get_saliency_map(image, model)
-
-            partitions = {}
-            quotient, remainder = divmod(len(saliency_map), self.NUM_PARTITION)
-            for key in range(self.NUM_PARTITION):
-                partitions[key] = [(int(saliency_map[idx, 0]), int(saliency_map[idx, 1])) for idx in
-                                   range(key * quotient, (key + 1) * quotient)]
-                if key == self.NUM_PARTITION - 1:
-                    partitions[key].extend((int(saliency_map[idx, 0]), int(saliency_map[idx, 1])) for idx in
-                                           range((key + 1) * quotient, len(saliency_map)))
-            return partitions
-
-        # Attention pattern: get partitions from attention activations
-        elif self.PATTERN == 'attention':
-            if self.verbose == 1:
-                print("Extracting image features using '%s' pattern." % self.PATTERN)
-
-            map_model = model.get_partition_model()
-
-            attn = map_model.predict(np.array([image]))[0]
-            img_height, img_width, image_ch = image.shape
-            attn = cv2.resize(attn, (img_height, img_width))
-
-            # attn = attn/np.mean(attn, axis=0)
-
-            #TODO if num_partitions > n_heads
-            if self.NUM_PARTITION <= model.n_heads:
-                max_mask = []
-
-                for _ in range(self.NUM_PARTITION):
-
-                    max_score = -1
-                    max_i = -1
-
-                    for i in range(model.n_heads):
-                        if not i in max_mask:
-                            mask = max_mask + [i]
-                            score = np.sum(
-                                    np.max(attn.T[mask], axis=0)
-                                )
-                            if score > max_score:
-                                max_score = score
-                                max_i = i
-
-                    max_mask.append(max_i)
-
-                # Extract best-scoring mask and assign maximum-activation map
-                imgmap = np.argmax(attn.T[max_mask], axis=0).T
-                partitions = {}
-                for i, key in enumerate(np.arange(model.n_heads)[max_mask]):
-                    partitions[key] = [tuple(loc) for loc in np.argwhere(imgmap == i)]
-
-            else:
-                print("Too few heads. Further splitting not implemented.")
-                exit 
-                
-            return partitions
-
-        # Black-box pattern: get partitions from key points.
-        elif self.PATTERN == 'black-box':
-            if self.verbose == 1:
-                print("Extracting image features using '%s' pattern." % self.PATTERN)
-
-            key_points = self.get_key_points(image)
-            if self.verbose == 1:
-                print("%s keypoints are found. " % (len(key_points)))
-
-            partitions = {}
-            # For small images, such as MNIST, CIFAR10.
-            if max(image.shape) < self.IMAGE_SIZE_BOUND:
-                for x in range(max(image.shape)):
-                    for y in range(max(image.shape)):
-                        ps = 0
-                        maxk = -1
-                        for i in range(len(key_points)):
-                            k = key_points[i - 1]
-                            dist2 = np.linalg.norm(np.array([x, y]) - np.array([k.pt[0], k.pt[1]]))
-                            ps2 = norm.pdf(dist2, loc=0.0, scale=k.size)
-                            if ps2 > ps:
-                                ps = ps2
-                                maxk = i
-                        if maxk in partitions.keys():
-                            partitions[maxk].append((x, y))
-                        else:
-                            partitions[maxk] = [(x, y)]
-                # If a partition gets too many pixels, randomly remove some pixels.
-                if self.MAX_NUM_OF_PIXELS_PER_KEY_POINT > 0:
-                    for mk in partitions.keys():
-                        begining_num = len(partitions[mk])
-                        for i in range(begining_num - self.MAX_NUM_OF_PIXELS_PER_KEY_POINT):
-                            partitions[mk].remove(random.choice(partitions[mk]))
-                return partitions
-            # For large images, such as ImageNet.
-            else:
-                key_points = key_points[:200]
-                each_num = max(image.shape) ** 2 / len(key_points)
-                maxk = 1
-                partitions[maxk] = []
-                for x in range(max(image.shape)):
-                    for y in range(max(image.shape)):
-                        if len(partitions[maxk]) <= each_num:
-                            partitions[maxk].append((x, y))
-                        else:
-                            maxk += 1
-                            partitions[maxk] = [(x, y)]
-                return partitions
-
-        else:
-            print("Unrecognised feature extraction pattern."
-                  "Try 'black-box' or 'grey-box'.")
+    def get_partitions(self, image, model=None, num_partition=10, pixel_bounds=(0, 1)):
+    	raise NotImplementedError
 
     # Get saliency map of an image.
     def get_saliency_map(self, image, model, pixel_bounds=(0, 1)):
@@ -213,13 +69,13 @@ class FeatureExtraction:
 
         manipulated_images = []
         (row, col, chl) = image.shape
-        for i in range(0, row):
-            for j in range(0, col):
-                # need to be very careful about image.copy()
-                changed_image_batch = image_batch.copy()
-                for p in range(0, self.NUM_OF_PIXEL_MANIPULATION):
-                    changed_image_batch[p, i, j, :] = new_pixel_list[p]
-                manipulated_images.append(changed_image_batch)  # each loop append [pixel_num, row, col, chl]
+
+        for i, j in np.ndindex(row, col):
+            # need to be very careful about image.copy()
+            changed_image_batch = image_batch.copy()
+            for p in range(0, self.NUM_OF_PIXEL_MANIPULATION):
+                changed_image_batch[p, i, j, :] = new_pixel_list[p]
+            manipulated_images.append(changed_image_batch)  # each loop append [pixel_num, row, col, chl]
 
         manipulated_images = np.asarray(manipulated_images)  # [row*col, pixel_num, row, col, chl]
         manipulated_images = manipulated_images.reshape(row * col * self.NUM_OF_PIXEL_MANIPULATION, row, col, chl)
@@ -248,11 +104,174 @@ class FeatureExtraction:
 
     def plot_saliency_map(self, image, partitions, path, ax = None):
         heatmap = np.zeros(image.shape[0:2])
-        for partitionID in partitions.keys():
-            pixels = partitions[partitionID]
+        for partitionID, pixels in partitions.items():
             for pixel in pixels:
                 heatmap[pixel] = partitionID + 1
         if ax is None:
             plt.imsave(path, cv2.resize(heatmap, (256, 256), interpolation=cv2.INTER_AREA), cmap='tab10')
         else:
             ax.imshow(cv2.resize(heatmap, (256, 256), interpolation=cv2.INTER_AREA), cmap='tab10')
+
+
+
+
+class GBExtraction(FeatureExtraction):
+
+    def get_partitions(self, image, model=None, num_partition=10):
+        self.NUM_PARTITION = num_partition
+        assert model is not None
+
+        if self.verbose == 1:
+            print("Extracting image features using '%s pattern." % self.PATTERN)
+
+        saliency_map = self.get_saliency_map(image, model)
+
+        partitions = {}
+        q, r = divmod(len(saliency_map), self.NUM_PARTITION)
+        for key in range(self.NUM_PARTITION):
+            partitions[key] = [(int(saliency_map[idx, 0]), int(saliency_map[idx, 1])) for idx in
+                                   range(key * q, (key + 1) * q)]
+            if key == self.NUM_PARTITION - 1:
+                partitions[key].extend((int(saliency_map[idx, 0]), int(saliency_map[idx, 1])) for idx in
+                                           range((key + 1) * q, len(saliency_map)))
+        return partitions
+
+
+
+class BBExtraction(FeatureExtraction):
+
+    def get_key_points(self, image, num_partition=10):
+    	self.NUM_PARTITION = num_partition
+
+    	image = copy.deepcopy(image)
+
+        sift = cv2.xfeatures2d.SIFT_create()  # cv2.SIFT() # cv2.SURF(400)
+
+        # Rescalee image to [0, 255]
+        if np.max(image) <= 1:
+            image = (image * 255).astype(np.uint8)
+        else:
+            image = image.astype(np.uint8)
+
+
+        if max(image.shape) < self.IMAGE_SIZE_BOUND:
+            # For a small image, SIFT works by enlarging the image.
+            image = cv2.resize(image, (0, 0), fx=self.IMG_ENLARGE_RATIO, fy=self.IMG_ENLARGE_RATIO)
+            key_points, _ = sift.detectAndCompute(image, None)
+            for i in range(len(key_points)):
+                old_pt = (key_points[i].pt[0], key_points[i].pt[1])
+                key_points[i].pt = (int(old_pt[0] / self.IMG_ENLARGE_RATIO),
+                                        int(old_pt[1] / self.IMG_ENLARGE_RATIO))
+        else:
+            key_points, _ = sift.detectAndCompute(image, None)
+
+        return key_points 
+
+
+    def get_partitions(self, image, model=None, num_partition=10):
+        self.NUM_PARTITION = num_partition
+
+        key_points = self.get_key_points(image)
+
+        if self.verbose == 1:
+            print("Extracting image features using '%s' pattern." % self.PATTERN)
+            print("%s keypoints are found." % (len(key_points)))
+
+        partitions = {}
+        sh = max(image.shape)
+
+        # FOr small images, such as MNIST, CIFAR10
+        if sh < self.IMAGE_SIZE_BOUND:
+            for x, y in np.ndindex((sh, sh)):
+                ps = 0
+                maxk = -1
+                for i in range(len(key_points)):
+                    k = key_points[i - 1]
+                    dist2 = np.linalg.norm(np.array([x, y]) - np.array([k.pt[0], k.pt[1]]))
+                    ps2 = norm.pdf(dist2, loc=0.0, scale = k.size)
+                    if ps2 > ps:
+                        ps = ps2
+                        maxk = i
+                    if maxk in partitions.keys():
+                        partitions[maxk].append((x, y))
+                    else:
+                        partitions[maxk] = [(x, y)]
+
+            # If a partition gets too many pixels, randomly remove some pixels:
+            if self.MAX_NUM_OF_PIXELS_PER_KEY_POINT > 0:
+                for mk, val in partitions.items():
+                    begining_num = len(val)
+                    for i in range(begining_num - self.MAX_NUM_OF_PIXELS_PER_KEY_POINT):
+                        val.remove(random.choice(val))
+            return partitions
+        # For large images, such as ImageNet
+        else:
+            key_points = key_points[:200]
+            each_num = max(image.shape) ** 2 / len(key_points)
+            maxk = 1
+            martitions[maxk] = []
+            for x, y, in np.ndindex((sh, sh)):
+                if len(partitions[maxk]) <= each_num:
+                    partitions[maxk].append((x, y))
+                else:
+                    maxk += 1
+                    partitions[maxk] = [(x, y)]
+            return partitions
+
+
+class AttExtraction(FeatureExtraction):
+
+    def get_partitions(self, image, model=None, num_partition=10):
+        self.NUM_PARTITION = num_partition
+
+        if self.verbose == 1:
+            print("Extracting image features using '%s' pattern." % self.PATTERN)
+
+        try:
+            map_model = model.get_partition_model()
+        except:
+            raise Exception("Model must be attention network for attention feature extraction")
+
+        attn = map_model.predict(np.array([image]))[0]
+        img_h, img_w, img_ch = image.shape
+
+        # Resize the attention activations to the input image
+        attn = cv2.resize(attn, (img_h, img_w))
+
+        if self.NUM_PARTITION > model.n_heads:
+            print("Too few attention heads. Reducing number of partitions to %d" % 
+                model.n_heads)
+
+            self.NUM_PARTITION = model.n_heads - 1
+
+
+        max_mask = []
+
+        for _ in range(self.NUM_PARTITION):
+            max_score = -1
+            max_i = -1
+
+            for i in range(model.n_heads):
+                if not i in max_mask:
+                    mask = max_mask + [i]
+
+                    # Score is the sum of the maximal activations within
+                    # channels selected by mask
+                    score = np.sum(
+                        np.max(attn.T[mask], axis=0))
+
+                    if score > max_score:
+                        max_score = score
+                        max_i = i
+
+            max_mask.append(max_i)
+
+
+        # Extract best-scoring channels and assign partitions
+        imgmap = np.argmax(attn.T[max_mask], axis=0).T
+        partitions = {}
+
+        for i in range(num_partition):
+        	partitions[i] = [tuple(loc) for loc in np.argwhere(imgmap == i)]
+
+        return partitions

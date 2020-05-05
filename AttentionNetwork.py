@@ -26,18 +26,18 @@ from residual_models import AttentionResNetCifar10
 
 # Define a Attention Network class.
 class AttentionNetwork(NeuralNetwork):
-    def __init__(self, n_heads=64, data_set='cifar10'):
-        self.data_set = data_set
+    def __init__(self, n_heads=64):
         self.model = Model()
-        assure_path_exists("%s_pic/" %self.data_set)
         self.n_heads = n_heads
         print('Using attention network')
 
     # To train a neural network.
-    def train_network(self, n_type="baby"):
-        num_classes = 10
+    def train_network(self, n_type="baby", data_set_name='cifar10'):
+        self.data_set_name = data_set_name
+        assure_path_exists("%s_pic/" %self.data_set_name)
+
         # Load the correct dataset
-        if self.data_set == 'mnist':
+        if self.data_set_name == 'mnist':
             batch_size = 128
             self.num_classes = 10
             epochs = 50
@@ -55,10 +55,10 @@ class AttentionNetwork(NeuralNetwork):
             x_train /= 255
             x_test /= 255
 
-            y_train = keras.utils.np_utils.to_categorical(y_train, num_classes)
-            y_test = keras.utils.np_utils.to_categorical(y_test, num_classes)
+            y_train = keras.utils.np_utils.to_categorical(y_train, self.num_classes)
+            y_test = keras.utils.np_utils.to_categorical(y_test, self.num_classes)
 
-        elif self.data_set == 'cifar10':
+        elif self.data_set_name == 'cifar10':
             batch_size = 32
             self.num_classes = 10
             epochs = 200
@@ -76,10 +76,10 @@ class AttentionNetwork(NeuralNetwork):
             x_train /= 255
             x_test /= 255
 
-            y_train = keras.utils.np_utils.to_categorical(y_train, num_classes)
-            y_test = keras.utils.np_utils.to_categorical(y_test, num_classes)
+            y_train = keras.utils.np_utils.to_categorical(y_train, self.num_classes)
+            y_test = keras.utils.np_utils.to_categorical(y_test, self.num_classes)
 
-        elif self.data_set == 'gtsrb':
+        elif self.data_set_name == 'gtsrb':
             batch_size = 128
             self.num_classes = 43
             epochs = 50
@@ -92,7 +92,7 @@ class AttentionNetwork(NeuralNetwork):
             x_test, y_test = test.x, test.y
             input_shape = (img_rows, img_cols, img_chls)
         else:
-            print("Unsupported dataset %s. Try 'mnist' or 'cifar10' or 'gtsrb'." % self.data_set)
+            print("Unsupported dataset %s. Try 'mnist' or 'cifar10' or 'gtsrb'." % self.data_set_name)
 
 
 
@@ -102,8 +102,9 @@ class AttentionNetwork(NeuralNetwork):
             model.compile(keras.optimizers.Adam(lr=0.0001), 
                 loss='categorical_crossentropy', 
                 metrics=['accuracy'])
-        elif n_type == 'transformer':
-            print("Transformer model not yet implemented.")
+        elif n_type == 'standard':
+            print("Using standard attention model.")
+            model, mask_model = self.standardmodel(input_shape)
         else:
             print("Using baby attention model.")
             model, mask_model = self.babymodel(input_shape)
@@ -146,16 +147,18 @@ class AttentionNetwork(NeuralNetwork):
         print("Test loss:", score[0])
         print("Test accuracy:", score[1])
 
+        model.summary()
+
         self.model = model
         self.mask_model = mask_model
         self.save_network()
 
 
-    # Generate network model for baby attention network
-    def babymodel(self, input_shape):
+    # Generate network model for standard attention network
+    def standardmodel(self, input_shape):
         self_input = Input(shape = input_shape)
         output = Conv2D(self.n_heads, (3, 3), activation='relu')(self_input)
-        output = Conv2D(self.n_heads, (3, 3), activation='relu')(output)
+        output = Conv2D(self.n_heads, (3, 3), activation='relu')(output)    
         # output =  MaxPooling2D((2, 2))(output)
 
         output_soft_mask = Conv2D(self.n_heads, (3, 3))(self_input)
@@ -195,22 +198,64 @@ class AttentionNetwork(NeuralNetwork):
         return model, mask_model
 
 
+    # Generate network model for baby attention network
+    def babymodel(self, input_shape):
+        self.n_heads = 8
+
+        self_input = Input(shape = input_shape)
+        output = Conv2D(self.n_heads, (3, 3), activation='relu')(self_input)
+
+        output_soft_mask = Conv2D(self.n_heads, (3, 3))(self_input)
+        # output_soft_mask = Permute((3, 1, 2))(output_soft_mask)
+        # output_soft_mask = Reshape((self.n_heads, 26*26))(output_soft_mask)
+        output_soft_mask = Activation('sigmoid')(output_soft_mask)
+        # output_soft_mask = Reshape((self.n_heads, 26, 26))(output_soft_mask)
+        # output_soft_mask = Permute((2, 3, 1))(output_soft_mask)
+
+
+        output = Multiply()([output, output_soft_mask])
+        output = MaxPooling2D((2, 2))(output)
+        # output = Conv2D(self.n_heads, (3,3), activation = 'relu')(output)
+        # output = MaxPooling2D((2, 2))(output) 
+        output = Flatten()(output)
+        # output = Dense(16, activation='relu')(output)
+        # output = Dropout(0.5)(output)
+        output = Dense(self.num_classes, activation='softmax')(output)
+
+        model = Model(self_input, output)
+
+        # Arbitrary choice for optimizer
+        #TODO figure this out
+        # prepare usefull callbacks
+
+        model.compile(keras.optimizers.Adam(lr=0.0001), loss='categorical_crossentropy', metrics=['accuracy'])
+
+        mask_model = Model(self_input, output_soft_mask)
+        mask_model.compile(loss='categorical_crossentropy',
+                        optimizer=keras.optimizers.Adam(lr=0.001),
+                        metrics=['accuracy'])
+        return model, mask_model
+
+
     # To save the neural network to disk.
     def save_network(self):
-        if self.data_set in ['mnist', 'cifar10', 'gtsrb']:
-            self.model.save('models/attention_'+ self.data_set + ".h5")
-            self.mask_model.save('models/attention_'+ self.data_set + '_mask.h5')
+        if self.data_set_name in ['mnist', 'cifar10', 'gtsrb']:
+            self.model.save('models/attention_'+ self.data_set_name + ".h5")
+            self.mask_model.save('models/attention_'+ self.data_set_name + '_mask.h5')
             print("Neural network saved to disk.")
         else:
             print("save_network: Unsupported dataset.")
 
 
     # To load a neural network from disk.
-    def load_network(self, path = None):
-        if path is None:
-            path = 'models/attention_' + self.data_set
+    def load_network(self, path = None, data_set_name = 'cifar10'):
+        self.data_set_name = data_set_name
+        assure_path_exists("%s_pic/" %self.data_set_name)
 
-        if self.data_set in ['mnist', 'cifar10', 'gtsrb']:
+        if path is None:
+            path = 'models/attention_' + self.data_set_name
+
+        if self.data_set_name in ['mnist', 'cifar10', 'gtsrb']:
             self.model = load_model(path + ".h5")
             self.mask_model = load_model(path + '_mask.h5')
             print("Neural network loaded from disk.")

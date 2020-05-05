@@ -19,11 +19,11 @@ import glob
 # Define a Neural Network class.
 class DataSet:
     # Specify which dataset at initialisation.
-    def __init__(self, data_set, trainOrTest):
-        self.data_set = data_set
+    def __init__(self, data_set_name, trainOrTest):
+        self.data_set_name = data_set_name
 
         # for a mnist model.
-        if self.data_set == 'mnist':
+        if self.data_set_name == 'mnist':
             num_classes = 10
             (x_train, y_train), (x_test, y_test) = mnist.load_data()
             img_rows, img_cols, img_chls = 28, 28, 1
@@ -38,7 +38,7 @@ class DataSet:
             x /= 255
 
         # for a cifar10 model.
-        elif self.data_set == 'cifar10':
+        elif self.data_set_name == 'cifar10':
             num_classes = 10
             (x_train, y_train), (x_test, y_test) = cifar10.load_data()
             img_rows, img_cols, img_chls = 32, 32, 3
@@ -53,7 +53,7 @@ class DataSet:
             x /= 255
 
         # for a gtsrb model.
-        elif self.data_set == 'gtsrb':
+        elif self.data_set_name == 'gtsrb':
             num_classes = 43
             img_rows, img_cols, img_chls = 48, 48, 3
             if trainOrTest == "training":
@@ -118,7 +118,7 @@ class DataSet:
                     y = keras.utils.np_utils.to_categorical(y_test, num_classes)
 
         else:
-            print("Unsupported dataset %s. Try 'mnist' or 'cifar10'." % data_set)
+            print("Unsupported dataset %s. Try 'mnist' or 'cifar10'." % data_set_name)
             exit()
 
         self.x = x

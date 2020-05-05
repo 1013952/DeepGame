@@ -16,7 +16,7 @@ import random
 import math
 
 from basics import *
-from GameMovesNew import *
+from GameMoves import *
 
 MCTS_multi_samples = 1
 effectiveConfidenceWhenChanging = 0.0
@@ -95,6 +95,7 @@ class MCTSCompetitive:
 
     def initialiseMoves(self):
         # initialise actions according to the type of manipulations
+        self.moves.generate_moves(collapse_channels = True)
         actions = self.moves.moves
         print((actions.keys()))
         self.keypoints[0] = 0
@@ -284,7 +285,7 @@ class MCTSCompetitive:
         # if distMethod == "L2":
         #     dist = l2Distance(newImage, self.image)
         # elif distMethod == "L1":
-        #     dist = l1Distance(newImage, self.image)
+        #     dist = l1Distance(newImage, self  .image)
         # elif distMethod == "Percentage":
         #     dist = diffPercent(newImage, self.image)
         # elif distMethod == "NumDiffs":

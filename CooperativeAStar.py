@@ -13,211 +13,186 @@ import heapq
 
 from FeatureExtraction import *
 from basics import *
+from GameMoves import *
 
 import time
 
-class CooperativeAStar:
-    def __init__(self, dataset, idx, image, model, eta, tau, bounds=(0, 1), attention = False):
-        self.DATASET = dataset
-        self.IDX = idx
-        self.IMAGE = image
-        self.IMAGE_BOUNDS = bounds
-        self.MODEL = model
-        self.DIST_METRIC = eta[0]
-        self.DIST_VAL = eta[1]
-        self.TAU = tau
-        self.LABEL, _ = self.MODEL.predict(self.IMAGE)
+THETA = 0.5
 
-        feature_extraction = None
-        if attention:
-            feature_extraction = FeatureExtraction(pattern='attention')
-        else:
-            feature_extraction = FeatureExtraction(pattern='grey-box')
-        self.PARTITIONS = feature_extraction.get_partitions(self.IMAGE, self.MODEL, num_partition=10)
+class GameNode:
+    def __init__(self, state, image, path_cost, heuristic, parent, depth):
+        self.state = state
+        self.image = image
+        self.path_cost = path_cost
+        self.heuristic = heuristic
+        self.parent = parent
+        self.depth = depth
 
-        self.DIST_EVALUATION = {}
-        self.ADV_MANIPULATION = ()
-        self.ADVERSARY_FOUND = None
-        self.ADVERSARY = None
+    def value(self):
+        return self.path_cost + self.heuristic
 
-        self.CURRENT_SAFE = [0]
+class AStarSearch:
+    def __init__(self, initial_image, goal_test, heuristic_function, actions, cost_function, apply_action_function, verbose = 1):
+        self.initial_image = initial_image
+        self.goal_test = goal_test
+        self.heuristic_function = heuristic_function
+        self.actions = actions
+        self.cost_function = cost_function
+        self.apply = apply_action_function
+        self.verbose =verbose
 
-        print("Distance metric %s, with bound value %s." % (self.DIST_METRIC, self.DIST_VAL))
+        h = self.heuristic_function(initial_image)
 
-    def target_pixels(self, image, pixels):
-        # tau = self.TAU
-        # model = self.MODEL
-        (row, col, chl) = image.shape
+        self.root = GameNode(state = {},
+                            image = self.initial_image,
+                            path_cost = 0,
+                            heuristic = h,
+                            parent = None,
+                            depth = 0)
 
-        # img_batch = np.kron(np.ones((chl * 2, 1, 1, 1)), image)
-        # atomic_manipulations = {}
-        # manipulated_images = []
-        # idx = 0
-        # for (x, y) in pixels:
-        #     changed_img_batch = img_batch.copy()
-        #     for z in range(chl):
-        #         atomic = (x, y, z, 1 * tau)
-        #         changed_img_batch[z * 2] = self.atomic_manipulation(image, atomic)
-        #         # changed_img_batch[z * 2, x, y, z] += tau
-        #         atomic_manipulations.update({idx: atomic})
-        #         idx += 1
-        #         atomic = (x, y, z, -1 * tau)
-        #         changed_img_batch[z * 2 + 1] = self.atomic_manipulation(image, atomic)
-        #         # changed_img_batch[z * 2 + 1, x, y, z] -= tau
-        #         atomic_manipulations.update({idx: atomic})
-        #         idx += 1
-        #     manipulated_images.append(changed_img_batch)  # each loop append [chl*2, row, col, chl]
-        #
-        # manipulated_images = np.asarray(manipulated_images)  # [len(pixels), chl*2, row, col, chl]
-        # manipulated_images = manipulated_images.reshape(len(pixels) * chl * 2, row, col, chl)
+        self.search_queue = []
+        self.visited = set()
 
-        atomic_manipulations = []
-        manipulated_images = []
-        for (x, y) in pixels:
-            for z in range(chl):
-                atomic = (x, y, z, 1 * self.TAU)
-                valid, atomic_image = self.apply_atomic_manipulation(image, atomic)
-                if valid is True:
-                    manipulated_images.append(atomic_image)
-                    atomic_manipulations.append(atomic)
-                atomic = (x, y, z, -1 * self.TAU)
-                valid, atomic_image = self.apply_atomic_manipulation(image, atomic)
-                if valid is True:
-                    manipulated_images.append(atomic_image)
-                    atomic_manipulations.append(atomic)
-        manipulated_images = np.asarray(manipulated_images)
+        self.best_case = (0, None)
+        self.best_estimate = 0
 
-        probabilities = self.MODEL.model.predict(manipulated_images)
-        # softmax_logits = self.MODEL.softmax_logits(manipulated_images)
+        # Using the confidence as a tie breaker
+        heapq.heappush(self.search_queue, (self.root.value(),  10000*self.root.heuristic, self.root))
 
-        if self.ADV_MANIPULATION:
-            atomic_list = [self.ADV_MANIPULATION[i:i + 4] for i in range(0, len(self.ADV_MANIPULATION), 4)]
+    def search(self, tau):
+        n_searched = 0
 
-        for idx in range(len(manipulated_images)):
-            if not diffImage(manipulated_images[idx], self.IMAGE) or not diffImage(manipulated_images[idx], image):
+        while len(self.search_queue) > 0:
+            value, tiebreak, search_node = heapq.heappop(self.search_queue)
+            if self.flat(search_node.state) in self.visited:
                 continue
-            cost = self.cal_distance(manipulated_images[idx], self.IMAGE)
-            [p_max, p_2dn_max] = heapq.nlargest(2, probabilities[idx])
-            heuristic = (p_max - p_2dn_max) * 2 * self.TAU  # heuristic value determines Admissible (lb) or not (ub)
-            estimation = cost + heuristic
 
-            valid = True
-            if self.ADV_MANIPULATION:
-                for atomic in atomic_list:  # atomic: [x, y, z, +/-tau]
-                    if atomic_manipulations[idx][0:3] == atomic[0:3] and atomic_manipulations[idx][3] == -atomic[3]:
-                        valid = False
-            if valid is True:
-                self.DIST_EVALUATION.update({self.ADV_MANIPULATION + atomic_manipulations[idx]: estimation})
+            self.visited.add(self.flat(search_node.state))
 
-            # self.DIST_EVALUATION.update({self.ADV_MANIPULATION + atomic_manipulations[idx]: estimation})
-        # print("Atomic manipulations of target pixels done.")
+            n_searched += 1
+            true_cost = self.cost_function(self.initial_image, search_node.image)
+            if search_node.parent is not None and true_cost == 0:
+                continue 
 
-    def apply_atomic_manipulation(self, image, atomic):
-        atomic_image = image.copy()
-        chl = atomic[0:3]
-        manipulate = atomic[3]
+            # best_estimate is the best bound we have through the heuristic
+            # Only use if heuristic and tau are true values
+            self.best_estimate = value
+            if true_cost > self.best_case[0]:
+                self.best_case = (true_cost, search_node.state)
 
-        if (atomic_image[chl] >= max(self.IMAGE_BOUNDS) and manipulate >= 0) or (
-                atomic_image[chl] <= min(self.IMAGE_BOUNDS) and manipulate <= 0):
-            valid = False
-            return valid, atomic_image
-        else:
-            if atomic_image[chl] + manipulate > max(self.IMAGE_BOUNDS):
-                atomic_image[chl] = max(self.IMAGE_BOUNDS)
-            elif atomic_image[chl] + manipulate < min(self.IMAGE_BOUNDS):
-                atomic_image[chl] = min(self.IMAGE_BOUNDS)
-            else:
-                atomic_image[chl] += manipulate
-            valid = True
-            return valid, atomic_image
-
-    def cal_distance(self, image1, image2):
-        if self.DIST_METRIC == 'L0':
-            return l0Distance(image1, image2)
-        elif self.DIST_METRIC == 'L1':
-            return l1Distance(image1, image2)
-        elif self.DIST_METRIC == 'L2':
-            return l2Distance(image1, image2)
-        else:
-            print("Unrecognised distance metric. "
-                  "Try 'L0', 'L1', or 'L2'.")
-
-    def play_game(self, image):
-        new_image = copy.deepcopy(self.IMAGE)
-        new_label, new_confidence = self.MODEL.predict(new_image)
-        print("Image copied")
-        time.sleep(10)
-
-        while self.cal_distance(self.IMAGE, new_image) <= self.DIST_VAL and new_label == self.LABEL:
-            # for partitionID in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]:
-            for partitionID in self.PARTITIONS.keys():
-                pixels = self.PARTITIONS[partitionID]
-                self.target_pixels(new_image, pixels)
-
-            self.ADV_MANIPULATION = min(self.DIST_EVALUATION, key=self.DIST_EVALUATION.get)
-            print("Current best manipulations:", self.ADV_MANIPULATION)
-            print("%s distance (estimated): %s" % (self.DIST_METRIC, self.DIST_EVALUATION[self.ADV_MANIPULATION]))
-            self.DIST_EVALUATION.pop(self.ADV_MANIPULATION)
-
-            new_image = copy.deepcopy(self.IMAGE)
-            atomic_list = [self.ADV_MANIPULATION[i:i + 4] for i in range(0, len(self.ADV_MANIPULATION), 4)]
-            for atomic in atomic_list:
-                valid, new_image = self.apply_atomic_manipulation(new_image, atomic)
-            dist = self.cal_distance(self.IMAGE, new_image)
-            print("%s distance (actual): %s" % (self.DIST_METRIC, dist))
-
-            new_label, new_confidence = self.MODEL.predict(new_image)
-            if self.cal_distance(self.IMAGE, new_image) > self.DIST_VAL:
-                # print("Adversarial distance exceeds distance budget.")
-                self.ADVERSARY_FOUND = False
-                break
-            elif new_label != self.LABEL:
-                # print("Adversarial image is found.")
-                self.ADVERSARY_FOUND = True
-                self.ADVERSARY = new_image
-                break
-
-            if self.CURRENT_SAFE[-1] != dist:
-                self.CURRENT_SAFE.append(dist)
-                path = "%s_pic/idx_%s_Safe_currentBest_%s.png" % (self.DATASET, self.IDX, len(self.CURRENT_SAFE) - 1)
-                self.MODEL.save_input(new_image, path)
+            if self.verbose == 1:
+                print("State being considered at depth %d" % search_node.depth)
+                print("Estimated distance: %f" % value)
+                print("Tiebreaker value: %f" % tiebreak)
+                print("True distance: %f" % self.cost_function(self.initial_image, search_node.image))
+                print("Path: %s" % search_node.state)
+                print("%d items searched so far" % n_searched)
+                print("%d items in search queue" % len(self.search_queue))
+                print("%d different states visited" % len(self.visited))
 
 
+            if self.goal_test(search_node.image) or search_node.heuristic < THETA * tau:
+                return self.best_case
 
-"""
-    def play_game(self, image):
-        self.player1(image)
+            eta_pruned = 0
 
-        self.ADV_MANIPULATION = min(self.DIST_EVALUATION, key=self.DIST_EVALUATION.get)
-        self.DIST_EVALUATION.pop(self.ADV_MANIPULATION)
-        print("Current best manipulations:", self.ADV_MANIPULATION)
+            for action in self.actions:
+                res = self.apply(search_node.state, action)
 
-        new_image = copy.deepcopy(self.IMAGE)
-        atomic_list = [self.ADV_MANIPULATION[i:i + 4] for i in range(0, len(self.ADV_MANIPULATION), 4)]
-        for atomic in atomic_list:
-            valid, new_image = self.apply_atomic_manipulation(new_image, atomic)
-        print("%s distance: %s" % (self.DIST_METRIC, self.cal_distance(self.IMAGE, new_image)))
+                if res is None:
+                    eta_pruned += 1
+                    continue
 
-        new_label, new_confidence = self.MODEL.predict(new_image)
-        if self.cal_distance(self.IMAGE, new_image) > self.DIST_VAL:
-            # print("Adversarial distance exceeds distance bound.")
-            self.ADVERSARY_FOUND = False
-        elif new_label != self.LABEL:
-            # print("Adversarial image is found.")
-            self.ADVERSARY_FOUND = True
-            self.ADVERSARY = new_image
-        else:
-            self.play_game(new_image)
+                next_image, next_state = res
 
-    def player1(self, image):
-        # print("Player I is acting on features.")
+                if next_state is not None and self.flat(next_state) not in self.visited:
+                    cost = self.cost_function(search_node.image, next_image)
 
-        for partitionID in self.PARTITIONS.keys():
-            self.player2(image, partitionID)
+                    if cost == 0:
+                        continue
 
-    def player2(self, image, partition_idx):
-        # print("Player II is acting on pixels in each partition.")
+                    h = self.heuristic_function(next_image)
+                    child_node = GameNode(image = next_image,
+                            state = next_state,
+                            path_cost = search_node.path_cost + cost,
+                            heuristic = h,
+                            parent = search_node,
+                            depth = search_node.depth + 1
+                        )
 
-        pixels = self.PARTITIONS[partition_idx]
-        self.target_pixels(image, pixels)
-"""
+
+                    heapq.heappush(self.search_queue, (child_node.value(), 10000*child_node.heuristic, child_node))
+            print("%d  child nodes out of search bound." % eta_pruned)
+
+
+        return self.best_case
+
+
+    def flat(self, state):
+        return tuple(sorted(state.items()))
+
+
+class CooperativeAStar:
+    def __init__(self, data_set_name, image_index, image, model, eta, tau, attention = False):
+        self.data_set_name = data_set_name
+        self.image_index = image_index
+        self.image = image
+        self.model = model
+        self.eta = eta
+        self.tau = tau
+        self.attention = attention
+        self.root_label, self.root_conf = self.model.predict(self.image)
+
+        self.game_moves = GameMoves(model = self.model,
+                                    image = self.image,
+                                    tau = self.tau,
+                                    pixel_bounds = (0,1),
+                                    attention = self.attention)
+        self.game_moves.generate_moves(collapse_channels=False)
+
+        self.dist_evaluation = {}
+        self.adv_manip = ()
+        self.adversary_found = None
+        self.adversary = None
+
+        self.current_safe = [0]
+
+    def goal_test(self, image):
+        new_label, new_confidence = self.model.predict(image)
+        return new_label != self.root_label
+
+    def heuristic_function(self, image):
+        probabilities = self.model.model.predict(np.array([image]))[0]
+        p_max, p_2nd_max = heapq.nlargest(2, probabilities)
+        # Assuming L = 1000, to fix? 
+
+        heuristic = (p_max - p_2nd_max) * self.tau
+        return heuristic
+
+    def apply_action_function(self, manip, action):
+        new_manip = mergeTwoDicts(manip, action)
+        next_image= self.game_moves.applyManipulation(self.image, new_manip)
+
+        # if valid is false
+        if self.eta[0].dist(self.image, next_image) > self.eta[1]:
+            return None
+
+        return next_image, new_manip
+
+
+    def search(self, image):
+        new_image = copy.deepcopy(self.image)
+        new_label, new_confidence = self.model.predict(new_image)
+
+        astar = AStarSearch(
+                initial_image = new_image,
+                goal_test = self.goal_test,
+                heuristic_function = self.heuristic_function,
+                actions = [move for key, partition in self.game_moves.player_two.items() if key > 0 for move in partition],
+                cost_function = self.eta[0].dist,
+                apply_action_function = self.apply_action_function
+            )
+
+        self.best_case = astar.search(self.tau)
+
+        # TODO add safe images

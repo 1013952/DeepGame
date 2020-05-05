@@ -1,298 +1,119 @@
 from __future__ import print_function
 from NeuralNetwork import *
-from AttentionNetwork import *
 from DataSet import *
 from CompetitiveMCTS import *
-from CooperativeMCTS import *
+from CooperativeMCTSNew import *
+from bound import *
 
 
-def upperbound(dataSetName, bound, tau, gameType, image_index, eta, attention=False):
-    start_time = time.time()
+class upperbound(bound):
+    """Main search function
+    Return format: tuple of
+            delta timestamp: total running time
+          float [0, 1]: new confidence in image
+          float [0, 100]: percentage modified
+          float: new L2 distance
+          float: new L1 distance
+          float: new L0 distance
+          int: maximally vulnerable feature (value can be any if cooperative)"""
+    def search(self, image_index):
+        image = self.dataSet.get_input(image_index)
+        label, conf = self.nn.predict(image)
+        label_str = self.nn.get_label(int(label))
 
-    MCTS_all_maximal_time = 300
-    MCTS_level_maximal_time = 60
+        if self.verbose == 1:
+            print("Working on input with index %s, whose class is '%s' and the confidence is %s."
+          % (image_index, label_str, conf))
+            print("the second player is %s." % self.game_type)
 
-    NN = None
-    if attention:
-        NN = AttentionNetwork(data_set= dataSetName)
-    else:
-        NN = NeuralNetwork(dataSetName)
-    NN.load_network()
-    print("Dataset is %s." % NN.data_set)
-    NN.model.summary()
-
-    dataset = DataSet(dataSetName, 'testing')
-    image = dataset.get_input(image_index)
-    (label, confident) = NN.predict(image)
-    origClassStr = NN.get_label(int(label))
-    print("Working on input with index %s, whose class is '%s' and the confidence is %s."
-          % (image_index, origClassStr, confident))
-    print("the second player is %s." % gameType)
-
-    # tau = 1
-
-    # choose between "cooperative" and "competitive"
-    if gameType == 'cooperative':
-        mctsInstance = MCTSCooperative(dataSetName, NN, image_index, image, tau, eta, attention)
-        mctsInstance.initialiseMoves()
-
-        start_time_all = time.time()
-        runningTime_all = 0
-        start_time_level = time.time()
-        runningTime_level = 0 
-        currentBest = eta[1]
-        while runningTime_all <= MCTS_all_maximal_time:
-        
-            '''
-            if runningTime_level > MCTS_level_maximal_time: 
-                bestChild = mctsInstance.bestChild(mctsInstance.rootIndex)
-                # pick the current best move to take  
-                mctsInstance.makeOneMove(bestChild)
-                start_time_level = time.time()
-            '''
-             
-
-            # Here are three steps for MCTS
-            (leafNode, availableActions) = mctsInstance.treeTraversal(mctsInstance.rootIndex)
-            newNodes = mctsInstance.initialiseExplorationNode(leafNode, availableActions)
-            for node in newNodes:
-                (_, value) = mctsInstance.sampling(node, availableActions)
-                mctsInstance.backPropagation(node, value)
-            if currentBest > mctsInstance.bestCase[0]:
-                print("best distance up to now is %s" % (str(mctsInstance.bestCase[0])))
-                currentBest = mctsInstance.bestCase[0]
-            bestChild = mctsInstance.bestChild(mctsInstance.rootIndex)
-
-            # store the current best
-            (_, bestManipulation) = mctsInstance.bestCase
-            image1 = mctsInstance.applyManipulation(bestManipulation)
-            path0 = "%s_pic/%s_Unsafe_currentBest.png" % (dataSetName, image_index)
-            NN.save_input(image1, path0)
-
-            runningTime_all = time.time() - start_time_all
-            runningTime_level = time.time() - start_time_level
-
-        (_, bestManipulation) = mctsInstance.bestCase
-
-        print("the number of sampling: %s" % mctsInstance.numOfSampling)
-        print("the number of adversarial examples: %s\n" % mctsInstance.numAdv)
-
-        image1 = mctsInstance.applyManipulation(bestManipulation)
-        (newClass, newConfident) = NN.predict(image1)
-        newClassStr = NN.get_label(int(newClass))
-
-        if newClass != label:
-            path0 = "%s_pic/%s_%s_modified_into_%s_with_confidence_%s.png" % (
-                dataSetName, image_index, origClassStr, newClassStr, newConfident)
-            NN.save_input(image1, path0)
-            path0 = "%s_pic/%s_diff.png" % (dataSetName, image_index)
-            NN.save_input(np.absolute(image - image1), path0)
-            print("\nfound an adversary image within pre-specified bounded computational resource. "
-                  "The following is its information: ")
-            print("difference between images: %s" % (diffImage(image, image1)))
-
-            print("number of adversarial examples found: %s" % mctsInstance.numAdv)
-
-            l2dist = l2Distance(mctsInstance.image, image1)
-            l1dist = l1Distance(mctsInstance.image, image1)
-            l0dist = l0Distance(mctsInstance.image, image1)
-            percent = diffPercent(mctsInstance.image, image1)
-            print("L2 distance %s" % l2dist)
-            print("L1 distance %s" % l1dist)
-            print("L0 distance %s" % l0dist)
-            print("manipulated percentage distance %s" % percent)
-            print("class is changed into '%s' with confidence %s\n" % (newClassStr, newConfident))
-
-            return time.time() - start_time_all, newConfident, percent, l2dist, l1dist, l0dist, 0
-
+        if self.game_type == "cooperative":
+            mcts = MCTSCooperative(data_set = self.data_set_name,
+                                model = self.nn,
+                                image_index = image_index,
+                                image = image,
+                                tau = self.tau,
+                                eta = self.eta,
+                                attention = self.attention)
         else:
-            print("\nfailed to find an adversary image within pre-specified bounded computational resource. ")
+            mcts = MCTSCompetitive(data_set = self.data_set_name,
+                                model = self.nn,
+                                image_index = image_index,
+                                image = image,
+                                tau = self.tau,
+                                eta = self.eta,
+                                attention = self.attention)
+
+        # Expand search tree until timeout
+        mcts = self.search_inner_loop(mcts, image_index)
+
+        _, best_manip = mcts.best_case        
+
+        print("The number of sampling is %s" % mcts.numOfSampling)
+        print("The number of adversarial examples found: %s\n" % mcts.numAdv)
+
+        adversary = mcts.applyManipulation(best_manip)
+        new_label, new_conf = self.nn.predict(image1)
+        new_label_str = self.nn.get_label(int(new_label))
+
+        # If adversarial example found, output the best results
+        if new_class != label and best_value < eta[1]:
+            l2dist, l1dist, l0dist, percent = self.success_callback(image_index, adversary)
+            return time.time() - start_time_all, new_conf, percent, l2dist, l1dist, l0dist, 0
+        else:
+            self.fail_callback()
             return 0, 0, 0, 0, 0, 0, 0
 
-    elif gameType == 'competitive':
+    # Expand the MCTS tree until timeout
+    def search_inner_loop(self, mcts, image_index):
+        mcts.initialiseMoves()
 
-        mctsInstance = MCTSCompetitive(dataSetName, NN, image_index, image, tau, eta, attention)
-        mctsInstance.initialiseMoves()
+        self.MCTS_all_maximal_time = 300
+        self.MCTS_level_maximal_time = 60
 
         start_time_all = time.time()
-        runningTime_all = 0
-        currentBest = eta[1]
-        currentBestIndex = 0
-        while runningTime_all <= MCTS_all_maximal_time:
+        running_time_all = 0
 
-            (leafNode, availableActions) = mctsInstance.treeTraversal(mctsInstance.rootIndex)
-            newNodes = mctsInstance.initialiseExplorationNode(leafNode, availableActions)
+        start_time_level = time.time()
+        running_time_level = 0
+
+        # Start with best distance being the search cap
+        current_best = self.eta[1]
+        current_best_index = 0
+
+
+        # Interrupt search when total running time exceeds cap
+        while running_time_all <= self.MCTS_all_maximal_time:
+            # Three steps for MCTS
+            (leafNode, availableActions) = mcts.treeTraversal(mcts.rootIndex)
+            newNodes = mcts.initialiseExplorationNode(leafNode, availableActions)
             for node in newNodes:
-                (_, value) = mctsInstance.sampling(node, availableActions)
-                mctsInstance.backPropagation(node, value)
-            if currentBest > mctsInstance.bestCase[0]:
-                print("best distance up to now is %s" % (str(mctsInstance.bestCase[0])))
-                currentBest = mctsInstance.bestCase[0]
-                currentBestIndex += 1
+                _, value = mcts.sampling(node, availableActions)
+                mcts.backPropagation(node, value)
+            if current_best > mcts.bestCase[0]:
+                if verbose == 1:
+                    print("Best distance up to now is %s" % (str(mcts.bestCase[0])))
+                current_best = mcts.bestCase[0]
+                current_best_index += 1
 
-            # store the current best
-            (_, bestManipulation) = mctsInstance.bestCase
-            image1 = mctsInstance.applyManipulation(bestManipulation)
-            path0 = "%s_pic/%s_Unsafe_currentBest_%s.png" % (dataSetName, image_index, currentBestIndex)
-            NN.save_input(image1, path0)
+            best_child = mcts.bestChild(mcts.rootIndex)
 
-            runningTime_all = time.time() - start_time_all
+            # Store the current best
+            _, best_manip = mcts.bestCase
+            image1 = mcts.applyManipulation(best_manip)
+            path0 = "%s_pic/%s_Unsafe_currentBest_%s.png" % (self.data_set_name, image_index, current_best_index)
+            self.nn.save_input(image1, path0)
 
-        (bestValue, bestManipulation) = mctsInstance.bestCase
+            running_time_all = time.time() - start_time_all
+            running_time_level = time.time() - start_time_level
 
-        print("the number of sampling: %s" % mctsInstance.numOfSampling)
-        print("the number of adversarial examples: %s\n" % mctsInstance.numAdv)
+        return mcts
 
-        print("the number of max features is %s" % mctsInstance.bestFeatures()[0])
-        maxfeatures = mctsInstance.bestFeatures()[0]
+    def failure_callback(self):
+        if self.game_type == "cooperative":
+            print("\nfailed to find an adversary image within pre-specified bounded computational resource. ")
 
-        if bestValue < eta[1]:
-
-            image1 = mctsInstance.applyManipulation(bestManipulation)
-            (newClass, newConfident) = NN.predict(image1)
-            newClassStr = NN.get_label(int(newClass))
-
-            if newClass != label:
-                path0 = "%s_pic/%s_%s_modified_into_%s_with_confidence_%s.png" % (
-                    dataSetName, image_index, origClassStr, newClassStr, newConfident)
-                NN.save_input(image1, path0)
-                path0 = "%s_pic/%s_diff.png" % (dataSetName, image_index)
-                NN.save_input(np.absolute(image - image1), path0)
-                print("\nfound an adversary image within pre-specified bounded computational resource. "
-                      "The following is its information: ")
-                print("difference between images: %s" % (diffImage(image, image1)))
-
-                print("number of adversarial examples found: %s" % mctsInstance.numAdv)
-
-                l2dist = l2Distance(mctsInstance.image, image1)
-                l1dist = l1Distance(mctsInstance.image, image1)
-                l0dist = l0Distance(mctsInstance.image, image1)
-                percent = diffPercent(mctsInstance.image, image1)
-                print("L2 distance %s" % l2dist)
-                print("L1 distance %s" % l1dist)
-                print("L0 distance %s" % l0dist)
-                print("manipulated percentage distance %s" % percent)
-                print("class is changed into '%s' with confidence %s\n" % (newClassStr, newConfident))
-
-                return time.time() - start_time_all, newConfident, percent, l2dist, l1dist, l0dist, maxfeatures
-
-            else:
-                print("\nthe robustness of the (input, model) is under control, "
+        else:
+            print("\nthe robustness of the (input, model) is under control, "
                       "with the first player is able to defeat the second player "
                       "who aims to find adversarial example by "
                       "playing suitable strategies on selecting features. ")
-                return 0, 0, 0, 0, 0, 0, 0
-
-        else:
-
-            print("\nthe robustness of the (input, model) is under control, "
-                  "with the first player is able to defeat the second player "
-                  "who aims to find adversarial example by "
-                  "playing suitable strategies on selecting features. ")
-            return 0, 0, 0, 0, 0, 0, 0
-
-    else:
-        print("Unrecognised game type. Try 'cooperative' or 'competitive'.")
-
-    runningTime = time.time() - start_time
-
-
-'''
-
-    if gameType == 'cooperative':
-        mctsInstance = MCTSCooperative(dataSetName, NN, image_index, image, tau, eta)
-        mctsInstance.initialiseMoves()
-
-        start_time_all = time.time()
-        runningTime_all = 0
-        numberOfMoves = 0
-        while (not mctsInstance.terminalNode(mctsInstance.rootIndex) and
-               not mctsInstance.terminatedByEta(mctsInstance.rootIndex) and
-               runningTime_all <= MCTS_all_maximal_time):
-            print("the number of moves we have made up to now: %s" % numberOfMoves)
-            l2dist = mctsInstance.l2Dist(mctsInstance.rootIndex)
-            l1dist = mctsInstance.l1Dist(mctsInstance.rootIndex)
-            l0dist = mctsInstance.l0Dist(mctsInstance.rootIndex)
-            percent = mctsInstance.diffPercent(mctsInstance.rootIndex)
-            diffs = mctsInstance.diffImage(mctsInstance.rootIndex)
-            print("L2 distance %s" % l2dist)
-            print("L1 distance %s" % l1dist)
-            print("L0 distance %s" % l0dist)
-            print("manipulated percentage distance %s" % percent)
-            print("manipulated dimensions %s" % diffs)
-
-            start_time_level = time.time()
-            runningTime_level = 0
-            childTerminated = False
-            currentBest = eta[1]
-            while runningTime_level <= MCTS_level_maximal_time:
-                # Here are three steps for MCTS
-                (leafNode, availableActions) = mctsInstance.treeTraversal(mctsInstance.rootIndex)
-                newNodes = mctsInstance.initialiseExplorationNode(leafNode, availableActions)
-                for node in newNodes:
-                    (childTerminated, value) = mctsInstance.sampling(node, availableActions)
-                    mctsInstance.backPropagation(node, value)
-                runningTime_level = time.time() - start_time_level
-                if currentBest > mctsInstance.bestCase[0]: 
-                    print("best possible distance up to now is %s" % (str(mctsInstance.bestCase[0])))
-                    currentBest = mctsInstance.bestCase[0]
-            bestChild = mctsInstance.bestChild(mctsInstance.rootIndex)
-            # pick the current best move to take  
-            mctsInstance.makeOneMove(bestChild)
-
-            image1 = mctsInstance.applyManipulation(mctsInstance.manipulation[mctsInstance.rootIndex])
-            diffs = mctsInstance.diffImage(mctsInstance.rootIndex)
-            path0 = "%s_pic/%s_temp_%s.png" % (dataSetName, image_index, len(diffs))
-            NN.save_input(image1, path0)
-            (newClass, newConfident) = NN.predict(image1)
-            print("confidence: %s" % newConfident)
-
-            # break if we found that one of the children is a misclassification
-            if childTerminated is True:
-                break
-
-            # store the current best
-            (_, bestManipulation) = mctsInstance.bestCase
-            image1 = mctsInstance.applyManipulation(bestManipulation)
-            path0 = "%s_pic/%s_currentBest.png" % (dataSetName, image_index)
-            NN.save_input(image1, path0)
-
-            numberOfMoves += 1
-            runningTime_all = time.time() - start_time_all
-
-        (_, bestManipulation) = mctsInstance.bestCase
-
-        image1 = mctsInstance.applyManipulation(bestManipulation)
-        (newClass, newConfident) = NN.predict(image1)
-        newClassStr = NN.get_label(int(newClass))
-
-        if newClass != label:
-            path0 = "%s_pic/%s_%s_modified_into_%s_with_confidence_%s.png" % (
-                dataSetName, image_index, origClassStr, newClassStr, newConfident)
-            NN.save_input(image1, path0)
-            path0 = "%s_pic/%s_diff.png" % (dataSetName, image_index)
-            NN.save_input(np.subtract(image, image1), path0)
-            print("\nfound an adversary image within pre-specified bounded computational resource. "
-                  "The following is its information: ")
-            print("difference between images: %s" % (diffImage(image, image1)))
-
-            print("number of adversarial examples found: %s" % mctsInstance.numAdv)
-
-            l2dist = l2Distance(mctsInstance.image, image1)
-            l1dist = l1Distance(mctsInstance.image, image1)
-            l0dist = l0Distance(mctsInstance.image, image1)
-            percent = diffPercent(mctsInstance.image, image1)
-            print("L2 distance %s" % l2dist)
-            print("L1 distance %s" % l1dist)
-            print("L0 distance %s" % l0dist)
-            print("manipulated percentage distance %s" % percent)
-            print("class is changed into '%s' with confidence %s\n" % (newClassStr, newConfident))
-
-            return time.time() - start_time_all, newConfident, percent, l2dist, l1dist, l0dist, 0
-
-        else:
-            print("\nfailed to find an adversary image within pre-specified bounded computational resource. ")
-            return 0, 0, 0, 0, 0, 0, 0
-
-
-'''
