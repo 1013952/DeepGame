@@ -3,7 +3,7 @@ Interface class from which bound classes inherit.
 Defines initialisation, prototypes search() and
 defines generic callbacks.
 
-Author: Denitsa Markova
+Author: 1013952
 """
 
 from NeuralNetwork import *
@@ -35,7 +35,7 @@ class bound:
 
 		if self.verbose == 1:
 			print("Dataset is %s." % self.model.data_set_name)
-			self.model.model.summary()
+			# self.model.model.summary()
 
 	"""Main search function
 	Return format: tuple of

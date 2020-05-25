@@ -52,8 +52,8 @@ for i, data_set_name in enumerate(['cifar10', 'gtsrb']):
 
 
 
-axes[0, 1].set_title("Original")
-axes[0, 0].set_title("Feature \n partitions")
+axes[0, 0].set_title("Original")
+axes[0, 1].set_title("Feature \n partitions")
 axes[0, 3].set_title("Feature \n partitions")
 axes[0, 2].set_title("Original")
 plt.savefig("figures/gb_comparison.png")

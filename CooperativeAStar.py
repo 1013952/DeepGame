@@ -1,12 +1,7 @@
-#!/usr/bin/python
-# -*- coding: utf-8 -*-
 """
-Construct a CooperativeAStar class to compute
-the lower bound of Player I’s minimum adversary distance
-while Player II being cooperative.
+Construct a class to handle A* search on our game tree
 
-Author: Min Wu
-Email: min.wu@cs.ox.ac.uk
+Author: 1013952
 """
 
 import heapq
@@ -19,6 +14,7 @@ import time
 
 THETA = 0.5
 
+# Nodes of the game tree - store the state (manipulation) and values needed for A*
 class GameNode:
     def __init__(self, state, image, path_cost, heuristic, parent, depth):
         self.state = state
@@ -31,8 +27,11 @@ class GameNode:
     def value(self):
         return self.path_cost + self.heuristic
 
+
+# AStar class, used to run searches on the game tree
 class AStarSearch:
-    def __init__(self, initial_image, goal_test, heuristic_function, actions, cost_function, apply_action_function, verbose = 1):
+    def __init__(self, initial_image, goal_test, heuristic_function, actions, 
+                    cost_function, apply_action_function, verbose = 1):
         self.initial_image = initial_image
         self.goal_test = goal_test
         self.heuristic_function = heuristic_function
@@ -57,8 +56,9 @@ class AStarSearch:
         self.best_estimate = 0
 
         # Using the confidence as a tie breaker
-        heapq.heappush(self.search_queue, (self.root.value(),  10000*self.root.heuristic, self.root))
+        heapq.heappush(self.search_queue, (self.root.value(),  self.root.heuristic, self.root))
 
+    # Returns a tuple of (best manipulation, best value)
     def search(self, tau):
         n_searched = 0
 
@@ -70,7 +70,7 @@ class AStarSearch:
             self.visited.add(self.flat(search_node.state))
 
             n_searched += 1
-            true_cost = self.cost_function(self.initial_image, search_node.image)
+            true_cost = self.cost_function(search_node.state)#self.initial_image, search_node.image)
             if search_node.parent is not None and true_cost == 0:
                 continue 
 
@@ -78,20 +78,20 @@ class AStarSearch:
             # Only use if heuristic and tau are true values
             self.best_estimate = value
             if true_cost > self.best_case[0]:
-                self.best_case = (true_cost, search_node.state)
+                self.best_case = (search_node.state, true_cost)
 
             if self.verbose == 1:
                 print("State being considered at depth %d" % search_node.depth)
                 print("Estimated distance: %f" % value)
-                print("Tiebreaker value: %f" % tiebreak)
-                print("True distance: %f" % self.cost_function(self.initial_image, search_node.image))
+                print("Tiebreaker value: %f" % (search_node.heuristic / tau / 28))
+                print("True distance: %f" % true_cost) #self.initial_image, search_node.image))
                 print("Path: %s" % search_node.state)
                 print("%d items searched so far" % n_searched)
                 print("%d items in search queue" % len(self.search_queue))
                 print("%d different states visited" % len(self.visited))
 
 
-            if self.goal_test(search_node.image) or search_node.heuristic < THETA * tau:
+            if self.goal_test(search_node.image) or search_node.heuristic < THETA * tau * 28:
                 return self.best_case
 
             eta_pruned = 0
@@ -106,15 +106,15 @@ class AStarSearch:
                 next_image, next_state = res
 
                 if next_state is not None and self.flat(next_state) not in self.visited:
-                    cost = self.cost_function(search_node.image, next_image)
+                    cost = self.cost_function(next_state) #self.initial_image, next_image)
 
-                    if cost == 0:
+                    if cost == 0 or  cost <= search_node.path_cost:
                         continue
 
                     h = self.heuristic_function(next_image)
                     child_node = GameNode(image = next_image,
                             state = next_state,
-                            path_cost = search_node.path_cost + cost,
+                            path_cost = cost,
                             heuristic = h,
                             parent = search_node,
                             depth = search_node.depth + 1
@@ -128,10 +128,11 @@ class AStarSearch:
         return self.best_case
 
 
+    # State is a dictionary - cannot be put into a set without flattening
     def flat(self, state):
         return tuple(sorted(state.items()))
 
-
+# Interfaes between the core A* search and the specifics of our search space
 class CooperativeAStar:
     def __init__(self, data_set_name, image_index, image, model, eta, tau, attention = False):
         self.data_set_name = data_set_name
@@ -148,7 +149,7 @@ class CooperativeAStar:
                                     tau = self.tau,
                                     pixel_bounds = (0,1),
                                     attention = self.attention)
-        self.game_moves.generate_moves(collapse_channels=False)
+        self.game_moves.generate_moves(collapse_channels= False)
 
         self.dist_evaluation = {}
         self.adv_manip = ()
@@ -166,7 +167,7 @@ class CooperativeAStar:
         p_max, p_2nd_max = heapq.nlargest(2, probabilities)
         # Assuming L = 1000, to fix? 
 
-        heuristic = (p_max - p_2nd_max) * self.tau
+        heuristic = (p_max - p_2nd_max) * self.tau * 28
         return heuristic
 
     def apply_action_function(self, manip, action):
@@ -179,20 +180,37 @@ class CooperativeAStar:
 
         return next_image, new_manip
 
+    def cost_fun(self, manip):
+        sum = 0
+        for loc, value in manip.items():
+            sum += min(1, value * value)
+        return np.sqrt(sum)
 
-    def search(self, image):
+    # Can set k to a value in range(number of moves for player A) to restrict
+    # search to just that move - for competitive
+    def search(self, image, k = None):
         new_image = copy.deepcopy(self.image)
         new_label, new_confidence = self.model.predict(new_image)
 
-        astar = AStarSearch(
-                initial_image = new_image,
-                goal_test = self.goal_test,
-                heuristic_function = self.heuristic_function,
-                actions = [move for key, partition in self.game_moves.player_two.items() if key > 0 for move in partition],
-                cost_function = self.eta[0].dist,
-                apply_action_function = self.apply_action_function
-            )
+        if k is None:
+            astar = AStarSearch(
+                    initial_image = new_image,
+                    goal_test = self.goal_test,
+                    heuristic_function = self.heuristic_function,
+                    actions = [move for key, partition in self.game_moves.player_two.items() if key > 0 for move in partition],
+                    cost_function = self.cost_fun,
+                    apply_action_function = self.apply_action_function
+                )
+        else:
+            print("%d actions loaded." % len(self.game_moves.player_two[k]))
+            astar = AStarSearch(
+                    initial_image = new_image,
+                    goal_test = self.goal_test,
+                    heuristic_function = self.heuristic_function,
+                    actions = self.game_moves.player_two[k],
+                    cost_function = self.cost_fun,
+                    apply_action_function = self.apply_action_function
+                )
+
 
         self.best_case = astar.search(self.tau)
-
-        # TODO add safe images

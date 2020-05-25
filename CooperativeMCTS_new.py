@@ -1,10 +1,8 @@
-# !/usr/bin/env python
 
 """
 A data structure for organising search
 
-author: Xiaowei Huang
-Refactored: Denitsa Markova
+Author: 1013952
 """
 
 import numpy as np
