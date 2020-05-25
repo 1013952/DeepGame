@@ -152,4 +152,4 @@ class DataSet:
         return img
 
     def get_class(self, img_path):
-        return int(img_path.split('/')[-2])
+        return int(img_path.split('/')[-2]) 
