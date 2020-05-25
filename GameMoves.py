@@ -1,9 +1,5 @@
-#!/usr/bin/env python
-
 """
-author: Xiaowei Huang
-revised by: Min Wu (min.wu@cs.ox.ac.uk)
-refactored by: Denitsa Markova (denitsa.markova@stcatz.ox.ac.uk)
+Author: 1013952
 """
 
 import sys
@@ -43,7 +39,7 @@ class GameMoves:
         else:
             self.feature_extraction = feature_extraction
 
-
+    # Collapse channels flag forces move to be the same on all channels, useful for MCTS
     def generate_moves(self, collapse_channels = True):
         kps = self.feature_extraction.get_key_points(self.image, num_partition=10)
         partitions = self.feature_extraction.get_partitions(self.image, self.model, num_partition=10)

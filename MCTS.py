@@ -1,10 +1,7 @@
-# !/usr/bin/env python
-
 """
-A data structure for organising search
-
-author: Xiaowei Huang
-Refactored: Denitsa Markova
+Implementation of Monte Carlo Tree Search
+For our use case
+Author: 1013952
 """
 
 import numpy as np
@@ -26,6 +23,8 @@ explorationRate = math.sqrt(2)
 
 parallel_pool_size = 10
 
+
+# Game node - handles whose move it is, encapsulates generation of children
 class Node:
     def __init__(self, index = 0, manipulation = None,
                 player_to_act = 1, value = 0, depth = 0,
@@ -99,13 +98,13 @@ class Node:
             return self.value / self.attempts
 
 
-# Storing and handling nodes
+# Specifics for cooperative
 class NodeCooperative(Node):
     # Trick for sharing variables between instances
     next_index = [1]
     game_moves = [None]
 
-
+# Specifics for competitive
 class NodeCompetitive(Node):
     # Trick for sharing variables between instances
     next_index = [1]
@@ -122,8 +121,7 @@ class NodeCompetitive(Node):
 
 
 
-
-
+# Conducts MCTS 
 class MCTS:
     def __init__(self, data_set_name, model, image_index, image, tau, eta, attention=False, verbose = 1):
         self.data_set_name = data_set_name

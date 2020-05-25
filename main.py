@@ -119,8 +119,5 @@ else:
           "Try 'ub' for upper bound or 'lb' for lower bound.\n")
     exit
 
-# dc.provideDetails()
-# dc.summarise()
-# dc.close()
 
 K.clear_session()

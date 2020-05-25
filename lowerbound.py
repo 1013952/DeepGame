@@ -1,13 +1,7 @@
-#!/usr/bin/python
-# -*- coding: utf-8 -*-
 """
-Construct a 'lowerbound' function to compute
-the lower bound of Player I’s minimum adversary distance
-while Player II being cooperative, or Player I's maximum
-adversary distance whilst Player II being competitive.
-
-Author: Min Wu
-Email: min.wu@cs.ox.ac.uk
+Lower bound function hosting the A* implementations for
+both cases of the game.
+Author: 1013952
 """
 
 from CooperativeAStar import *
@@ -18,7 +12,7 @@ from bound import *
 
 class lowerbound(bound):
 
-
+    # Same return pattern as bound
     def search(self, image_index):
         self.bound_type = 'lb'
 
@@ -31,9 +25,7 @@ class lowerbound(bound):
                   % (image_index, label_str, conf))
             print("The second player is being %s." % self.game_type)
 
-        # path = "%s_pic/idx_%s_label_[%s]_with_confidence_%s.png" % (
-        #     self.data_set_name, image_index, label_str, confidence)
-        # self.save_input(image, path)
+        start_time = time.time()
 
         if self.game_type == 'cooperative':
             game_instance = CooperativeAStar(data_set_name = self.data_set_name,
@@ -43,17 +35,17 @@ class lowerbound(bound):
                                             eta = self.eta,
                                             tau = self.tau,
                                             attention = self.attention)
-        else:
-            game_instance = CompetitiveAlphaBeta(data_set_name = self.data_set_name,
-                                                image_index = image_index,
-                                                image = image,
-                                                model = self.model,
-                                                eta = self.eta,
-                                                tau = self.tau,
-                                                attention = self.attention)
+            game_instance.search(image_index)
 
-        start_time = time.time()
-        game_instance.search(image_index)
+        else:
+            game_instance = CooperativeAStar(data_set_name = self.data_set_name,
+                                            image_index = image_index,
+                                            image = image,
+                                            model = self.model,
+                                            eta = self.eta,
+                                            tau = self.tau,
+                                            attention = self.attention)
+            game_instance.search(image_index, 2)
 
         best_manip, best_value = game_instance.best_case
         adversary = game_instance.game_moves.applyManipulation(image, best_manip)

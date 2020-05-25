@@ -6,7 +6,7 @@ in a black-box or grey-box pattern.
 Author: Min Wu
 Email: min.wu@cs.ox.ac.uk
 
-Refactored: Denitsa Markova
+Refactored: 1013952
 """
 
 import copy
@@ -20,7 +20,7 @@ from itertools import combinations
 from matplotlib import pyplot as plt
 
 
-# Define a Feature Extraction class.
+# Define a Feature Extraction class prototype
 class FeatureExtraction:
     def __init__(self, verbose=0):
         # Verbosity patterns:
@@ -114,7 +114,7 @@ class FeatureExtraction:
 
 
 
-
+# Grey-box specific
 class GBExtraction(FeatureExtraction):
 
     def get_partitions(self, image, model=None, num_partition=10):
@@ -138,6 +138,7 @@ class GBExtraction(FeatureExtraction):
 
 
 
+# Black-box using SIFT
 class BBExtraction(FeatureExtraction):
 
     def get_key_points(self, image, num_partition=10):
@@ -219,6 +220,7 @@ class BBExtraction(FeatureExtraction):
             return partitions
 
 
+# New addition from 1013952: Attention extraction
 class AttExtraction(FeatureExtraction):
 
     def get_partitions(self, image, model=None, num_partition=10):

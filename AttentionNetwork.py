@@ -2,8 +2,7 @@
 Construct an AttentionNetwork class inheriting
 from NeuralNetwork to handle the attention module
 
-Author: Denitsa Markova
-Email: denitsa.markova@cs.ox.ac.uk
+Author: 1013952
 """
 
 import cv2
@@ -32,7 +31,7 @@ class AttentionNetwork(NeuralNetwork):
         print('Using attention network')
 
     # To train a neural network.
-    def train_network(self, n_type="baby", data_set_name='cifar10'):
+    def train_network(self, n_type="baby", data_set_name='mnist'):
         self.data_set_name = data_set_name
         assure_path_exists("%s_pic/" %self.data_set_name)
 
@@ -41,22 +40,8 @@ class AttentionNetwork(NeuralNetwork):
             batch_size = 128
             self.num_classes = 10
             epochs = 50
-            img_rows, img_cols = 28, 28
+            img_rows, img_cols, img_chls = 28, 28, 1
             data_augmentation = False
-
-            (x_train, y_train), (x_test, y_test) = mnist.load_data()
-
-            x_train = x_train.reshape(x_train.shape[0], img_rows, img_cols, 1)
-            x_test = x_test.reshape(x_test.shape[0], img_rows, img_cols, 1)
-            input_shape = (img_rows, img_cols, 1)
-
-            x_train = x_train.astype('float32')
-            x_test = x_test.astype('float32')
-            x_train /= 255
-            x_test /= 255
-
-            y_train = keras.utils.np_utils.to_categorical(y_train, self.num_classes)
-            y_test = keras.utils.np_utils.to_categorical(y_test, self.num_classes)
 
         elif self.data_set_name == 'cifar10':
             batch_size = 32
@@ -65,20 +50,6 @@ class AttentionNetwork(NeuralNetwork):
             img_rows, img_cols, img_chls = 32, 32, 3
             data_augmentation = True
 
-            (x_train, y_train), (x_test, y_test) = cifar10.load_data()
-
-            x_train = x_train.reshape(x_train.shape[0], img_rows, img_cols, img_chls)
-            x_test = x_test.reshape(x_test.shape[0], img_rows, img_cols, img_chls)
-            input_shape = (img_rows, img_cols, img_chls)
-
-            x_train = x_train.astype('float32')
-            x_test = x_test.astype('float32')
-            x_train /= 255
-            x_test /= 255
-
-            y_train = keras.utils.np_utils.to_categorical(y_train, self.num_classes)
-            y_test = keras.utils.np_utils.to_categorical(y_test, self.num_classes)
-
         elif self.data_set_name == 'gtsrb':
             batch_size = 128
             self.num_classes = 43
@@ -86,14 +57,15 @@ class AttentionNetwork(NeuralNetwork):
             img_rows, img_cols, img_chls = 48, 48, 3
             data_augmentation = True
 
-            train = DataSet('gtsrb', 'training')
-            x_train, y_train = train.x, train.y
-            test = DataSet('gtsrb', 'test')
-            x_test, y_test = test.x, test.y
-            input_shape = (img_rows, img_cols, img_chls)
         else:
             print("Unsupported dataset %s. Try 'mnist' or 'cifar10' or 'gtsrb'." % self.data_set_name)
 
+            train = DataSet(self.data_set_name, 'training')
+            x_train, y_train = train.x, train.y
+            test = DataSet(self.data_set_name, "test")
+            x_test, y_test = test.x, test.y
+
+            input_shape = (img_rows, img_cols, 1)
 
 
         # Choose correct network structure
@@ -159,12 +131,9 @@ class AttentionNetwork(NeuralNetwork):
         self_input = Input(shape = input_shape)
         output = Conv2D(self.n_heads, (3, 3), activation='relu')(self_input)
         output = Conv2D(self.n_heads, (3, 3), activation='relu')(output)    
-        # output =  MaxPooling2D((2, 2))(output)
 
         output_soft_mask = Conv2D(self.n_heads, (3, 3))(self_input)
         output_soft_mask = Conv2D(self.n_heads, (3, 3))(output_soft_mask)
-        # output_soft_mask = Activation('sigmoid')(output_soft_mask)
-        # output_soft_mask = MaxPooling2D((2, 2))(output_soft_mask)
 
         output_soft_mask = Permute((3, 1, 2))(output_soft_mask)
         output_soft_mask = Reshape((self.n_heads, 24*24))(output_soft_mask)
@@ -185,10 +154,6 @@ class AttentionNetwork(NeuralNetwork):
 
         model = Model(self_input, output)
 
-        # Arbitrary choice for optimizer
-        #TODO figure this out
-        # prepare usefull callbacks
-
         model.compile(keras.optimizers.Adam(lr=0.0001), loss='categorical_crossentropy', metrics=['accuracy'])
 
         mask_model = Model(self_input, output_soft_mask)
@@ -203,30 +168,21 @@ class AttentionNetwork(NeuralNetwork):
         self.n_heads = 8
 
         self_input = Input(shape = input_shape)
-        output = Conv2D(self.n_heads, (3, 3), activation='relu')(self_input)
 
-        output_soft_mask = Conv2D(self.n_heads, (3, 3))(self_input)
-        # output_soft_mask = Permute((3, 1, 2))(output_soft_mask)
-        # output_soft_mask = Reshape((self.n_heads, 26*26))(output_soft_mask)
+        self_input_p = MaxPooling2D((2, 2))(self_input)
+        output = Conv2D(self.n_heads, (3, 3), activation='relu')(self_input_p)
+
+        output_soft_mask = Conv2D(self.n_heads, (3, 3), activation = 'relu')(self_input_p)
         output_soft_mask = Activation('sigmoid')(output_soft_mask)
-        # output_soft_mask = Reshape((self.n_heads, 26, 26))(output_soft_mask)
-        # output_soft_mask = Permute((2, 3, 1))(output_soft_mask)
 
 
         output = Multiply()([output, output_soft_mask])
         output = MaxPooling2D((2, 2))(output)
-        # output = Conv2D(self.n_heads, (3,3), activation = 'relu')(output)
-        # output = MaxPooling2D((2, 2))(output) 
         output = Flatten()(output)
-        # output = Dense(16, activation='relu')(output)
-        # output = Dropout(0.5)(output)
         output = Dense(self.num_classes, activation='softmax')(output)
 
         model = Model(self_input, output)
 
-        # Arbitrary choice for optimizer
-        #TODO figure this out
-        # prepare usefull callbacks
 
         model.compile(keras.optimizers.Adam(lr=0.0001), loss='categorical_crossentropy', metrics=['accuracy'])
 
