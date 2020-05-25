@@ -53,7 +53,7 @@ class AStarSearch:
         self.visited = set()
 
         self.best_case = (0, None)
-        self.best_estimate = 0
+        self.best_estimate = 0 
 
         # Using the confidence as a tie breaker
         heapq.heappush(self.search_queue, (self.root.value(),  self.root.heuristic, self.root))
