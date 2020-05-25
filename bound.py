@@ -106,4 +106,3 @@ class bound:
 	# Callback for when no adversarial example is found
 	def failure_callback(self):
 		print("Failed to find an adversary image within pre-specified bounded computational resource.")
-
