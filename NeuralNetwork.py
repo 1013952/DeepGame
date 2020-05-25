@@ -336,4 +336,4 @@ class NeuralNetwork:
 
         # softmax_logits = func([manipulated_images, 0])[0]
         # print(softmax_logits.shape)
-        return softmax_logits
+        return softmax_logits 
